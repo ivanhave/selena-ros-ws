@@ -152,7 +152,7 @@ function setManualMode(enabled) {
         new ROSLIB.ServiceRequest({
             activate_controllers: activate,
             deactivate_controllers: deactivate,
-            strictness: 1
+            strictness: 2
         }),
         (result) => { console.log('Controller switch:', result.ok ? 'OK' : 'FAILED'); }
     );
