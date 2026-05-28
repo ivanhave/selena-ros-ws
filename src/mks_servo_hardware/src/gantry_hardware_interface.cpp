@@ -112,16 +112,12 @@ namespace gantry_hardware
             }
         }
 
-        // If controller wants position interfaces it's JTC — always acceptable
-        // If controller wants velocity only it's gantry_velocity_controller — acceptable
-        // Both at same time would be a conflict — reject
-        if (wants_velocity_only && wants_position)
-        {
-            RCLCPP_ERROR(rclcpp::get_logger("GantryHardwareInterface"),
-                "Rejecting mode switch — cannot claim both position and velocity-only interfaces.");
-            return hardware_interface::return_type::ERROR;
-        }
-
+        // Accepts:
+        // - velocity only              → gantry_velocity_controller
+        // - position only              → JTC (position control)
+        // - position + velocity        → JTC with velocity feedforward (also valid)
+        (void)wants_velocity_only;
+        (void)wants_position;
         return hardware_interface::return_type::OK;
     }
 

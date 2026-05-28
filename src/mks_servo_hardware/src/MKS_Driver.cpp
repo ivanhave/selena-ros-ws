@@ -171,8 +171,8 @@ void MKSDriver::setTargetPositionAbsoluteRadian(double pos_rad, double vel_rad_s
     int32_t absolute_steps = static_cast<int32_t>(pos_rad * direction_multiplier_ * RAD_TO_STEPS);
 
     uint16_t speed_rpm = static_cast<uint16_t>(std::abs(vel_rad_s * RAD_TO_RPM));
-    if (speed_rpm > 3000)
-        speed_rpm = 3000;
+    if (speed_rpm > 3000) speed_rpm = 3000;
+    if (speed_rpm == 0)   speed_rpm = 50;  // always move toward target position
 
     uint8_t data[6];
     data[0] = (speed_rpm >> 8) & 0xFF;
