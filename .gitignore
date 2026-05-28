@@ -1,0 +1,12 @@
+build/
+install/
+log/
+yolov8n.pt
+*.pyc
+__pycache__/
+*.egg-info/
+.vscode/
+*.swp
+.DS_Store
+src/frames_*.gv
+src/frames_*.pdf

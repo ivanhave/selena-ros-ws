@@ -1,0 +1,16 @@
+# Gripper tray position in gantry frame.
+# All values in meters, relative to gantry home (all axes at 0).
+#
+# TODO: measure physically once tray is mounted and update these values.
+#
+# How to use:
+#   ros2 run robot_missions mission_server \
+#     --ros-args --params-file $(ros2 pkg prefix robot_missions)/share/robot_missions/config/tray_positions.yaml
+
+mission_server:
+  ros__parameters:
+    gripper_tray:
+      gx: 0.0          # TODO: measure — gantry X position of tray center
+      gy: 0.0          # TODO: measure — gantry Y position of tray center
+      z_approach: 0.0  # TODO: measure — Z height to approach tray safely (before lowering)
+      z_pick: 0.0      # TODO: measure — Z height at which gripper closes on seed

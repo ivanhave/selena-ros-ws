@@ -1,0 +1,9 @@
+<library path="mks_servo_hardware">
+  <class name="mks_servo_hardware/GantryHardwareInterface"
+         type="gantry_hardware::GantryHardwareInterface"
+         base_class_type="hardware_interface::SystemInterface">
+    <description>
+      MKS Servo Hardware Interface for the Gantry of Selena Robot.
+    </description>
+  </class>
+</library>

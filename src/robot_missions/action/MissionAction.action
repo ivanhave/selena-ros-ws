@@ -1,0 +1,20 @@
+# Goal — sent by operator or web app
+string  mission_type      # "plant", "water", "monitor", "weed"
+string  target            # "pea", "naut", "all_plants"
+float32 quantity          # 5.0
+string  quantity_unit     # "meters", "seeds", "liters"
+float32 start_x           # world X coordinate (odometry/RTK)
+float32 start_y           # world Y coordinate
+---
+# Result — returned when mission completes
+bool    success
+string  report
+uint32  items_completed
+float32 distance_covered
+---
+# Feedback — sent periodically during execution
+float32 progress_percent
+string  current_step
+uint32  items_completed_so_far
+float32 current_robot_x
+float32 current_robot_y

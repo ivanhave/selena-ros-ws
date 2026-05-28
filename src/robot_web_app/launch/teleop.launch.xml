@@ -1,0 +1,19 @@
+<!-- ros2 launch robot_web_app teleop.launch.xml -->
+ 
+<launch>
+
+    <!-- rosbridge — WebSocket bridge between web app and ROS2 -->
+    <node pkg="rosbridge_server"
+          exec="rosbridge_websocket"
+          name="rosbridge_websocket"
+          output="screen">
+        <param name="port" value="9090"/>
+    </node>
+
+    <!-- HTTP server — serves the web app on port 8080 -->
+    <node pkg="robot_web_app"
+          exec="serve_webapp.py"
+          name="webapp_server"
+          output="screen"/>
+
+</launch>

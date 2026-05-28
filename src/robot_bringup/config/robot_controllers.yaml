@@ -1,0 +1,92 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 50
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+    joint_trajectory_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+    diff_drive_controller:
+      type: diff_drive_controller/DiffDriveController
+    gantry_velocity_controller:
+      type: forward_command_controller/ForwardCommandController
+    gripper_controller:
+      type: forward_command_controller/ForwardCommandController
+
+joint_trajectory_controller:
+  ros__parameters:
+    joints:
+      - x_axis_joint
+      - y_axis_joint
+      - z_axis_joint
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+    interpolation_method: splines
+    allow_nonzero_velocity_at_trajectory_end: true
+    constraints:
+      goal_time: 0.0
+      stopped_velocity_tolerance: 0.5
+      x_axis_joint:
+        goal: 0.01
+        trajectory: 0.0
+      y_axis_joint:
+        goal: 0.01
+        trajectory: 0.0
+      z_axis_joint:
+        goal: 0.01
+        trajectory: 0.0
+
+diff_drive_controller:
+  ros__parameters:
+    use_stamped_vel: true
+    # Wheel joints
+    left_wheel_names:
+      - left_leg_front_wheel_joint
+      - left_leg_back_wheel_joint
+    right_wheel_names:
+      - right_leg_front_wheel_joint
+      - right_leg_back_wheel_joint
+
+    # Robot geometry
+    wheel_separation: 1.275
+    wheel_radius: 0.0825
+
+    # Odometry
+    open_loop: false
+    enable_odom_tf: true
+    odom_frame_id: odom
+    base_frame_id: base_footprint
+
+    # Velocity limits
+    linear:
+      x:
+        has_velocity_limits: true
+        max_velocity: 1.0 # m/s
+        has_acceleration_limits: true
+        max_acceleration: 0.5 # m/s^2
+    angular:
+      z:
+        has_velocity_limits: true
+        max_velocity: 1.0 # rad/s
+        has_acceleration_limits: true
+        max_acceleration: 1.0 # rad/s^2
+
+    # Publishing
+    publish_rate: 50.0
+
+gantry_velocity_controller:
+  ros__parameters:
+    joints:
+      - x_axis_joint
+      - y_axis_joint
+      - z_axis_joint
+    interface_name: velocity
+
+gripper_controller:
+  ros__parameters:
+    joints:
+      - left_finger_joint
+      - right_finger_joint
+    interface_name: position

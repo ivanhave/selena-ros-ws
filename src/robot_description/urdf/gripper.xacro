@@ -1,0 +1,107 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <xacro:property name="base_x"          value="0.040" />
+    <xacro:property name="base_y"          value="0.070" />
+    <xacro:property name="base_z"          value="0.015" />
+
+    <xacro:property name="arm_x"           value="0.010" />
+    <xacro:property name="arm_y"           value="0.010" />
+    <xacro:property name="arm_z"           value="0.060" />
+
+    <xacro:property name="tip_x"           value="0.010" />
+    <xacro:property name="tip_y"           value="0.020" />
+    <xacro:property name="tip_z"           value="0.010" />
+
+    <xacro:property name="arm_offset_y"    value="0.025" />
+    <xacro:property name="finger_stroke"   value="0.020" />
+    <xacro:property name="z_column_length" value="0.55"  />
+
+    <link name="gripper_base_link">
+        <visual>
+            <geometry><box size="${base_x} ${base_y} ${base_z}" /></geometry>
+            <origin xyz="0 0 ${base_z/2}" rpy="0 0 0" />
+            <material name="grey" />
+        </visual>
+        <collision>
+            <geometry><box size="${base_x} ${base_y} ${base_z}" /></geometry>
+            <origin xyz="0 0 ${base_z/2}" rpy="0 0 0" />
+        </collision>
+        <inertial>
+            <mass value="0.05" />
+            <inertia ixx="2.29e-5" ixy="0" ixz="0"
+                     iyy="1.04e-5" iyz="0" izz="2.96e-5" />
+        </inertial>
+    </link>
+
+    <!-- Left jaw — vertical arm + inward tip -->
+    <link name="left_finger_link">
+        <visual>
+            <geometry><box size="${arm_x} ${arm_y} ${arm_z}" /></geometry>
+            <origin xyz="0 0 ${arm_z/2}" rpy="0 0 0" />
+            <material name="blue" />
+        </visual>
+        <visual>
+            <geometry><box size="${tip_x} ${tip_y} ${tip_z}" /></geometry>
+            <origin xyz="0 ${-tip_y/2} ${arm_z}" rpy="0 0 0" />
+            <material name="blue" />
+        </visual>
+        <collision>
+            <geometry><box size="${arm_x} ${arm_y} ${arm_z}" /></geometry>
+            <origin xyz="0 0 ${arm_z/2}" rpy="0 0 0" />
+        </collision>
+        <inertial>
+            <mass value="0.015" />
+            <inertia ixx="4.6e-6" ixy="0" ixz="0"
+                     iyy="4.6e-6" iyz="0" izz="2.5e-8" />
+        </inertial>
+    </link>
+
+    <!-- Right jaw — vertical arm + inward tip (mirrored) -->
+    <link name="right_finger_link">
+        <visual>
+            <geometry><box size="${arm_x} ${arm_y} ${arm_z}" /></geometry>
+            <origin xyz="0 0 ${arm_z/2}" rpy="0 0 0" />
+            <material name="blue" />
+        </visual>
+        <visual>
+            <geometry><box size="${tip_x} ${tip_y} ${tip_z}" /></geometry>
+            <origin xyz="0 ${tip_y/2} ${arm_z}" rpy="0 0 0" />
+            <material name="blue" />
+        </visual>
+        <collision>
+            <geometry><box size="${arm_x} ${arm_y} ${arm_z}" /></geometry>
+            <origin xyz="0 0 ${arm_z/2}" rpy="0 0 0" />
+        </collision>
+        <inertial>
+            <mass value="0.015" />
+            <inertia ixx="4.6e-6" ixy="0" ixz="0"
+                     iyy="4.6e-6" iyz="0" izz="2.5e-8" />
+        </inertial>
+    </link>
+
+    <joint name="gripper_base_joint" type="fixed">
+        <parent link="z_axis_link" />
+        <child link="gripper_base_link" />
+        <origin xyz="0 0 ${z_column_length}" rpy="0 0 0" />
+    </joint>
+
+    <!-- Left finger opens in +Y direction (away from centre) -->
+    <joint name="left_finger_joint" type="prismatic">
+        <parent link="gripper_base_link" />
+        <child link="left_finger_link" />
+        <origin xyz="0 ${arm_offset_y} ${base_z}" rpy="0 0 0" />
+        <axis xyz="0 1 0" />
+        <limit lower="0.0" upper="${finger_stroke}" velocity="0.05" effort="10" />
+    </joint>
+
+    <!-- Right finger opens in -Y direction (away from centre) -->
+    <joint name="right_finger_joint" type="prismatic">
+        <parent link="gripper_base_link" />
+        <child link="right_finger_link" />
+        <origin xyz="0 ${-arm_offset_y} ${base_z}" rpy="0 0 0" />
+        <axis xyz="0 -1 0" />
+        <limit lower="0.0" upper="${finger_stroke}" velocity="0.05" effort="10" />
+    </joint>
+
+</robot>

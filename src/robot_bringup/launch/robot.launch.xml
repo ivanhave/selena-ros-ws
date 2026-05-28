@@ -1,0 +1,47 @@
+<!-- ros2 launch robot_bringup robot.launch.xml -->
+<launch>
+    <let name="urdf_path"
+        value="$(find-pkg-share robot_description)/urdf/selena_robot.urdf.xacro" />
+    <let name="robot_description"
+        value="$(command 'xacro $(var urdf_path)')" />
+
+    <node pkg="robot_state_publisher"
+        exec="robot_state_publisher"
+        name="robot_state_publisher">
+        <param name="robot_description" value="$(var robot_description)" />
+    </node>
+
+    <node pkg="controller_manager"
+        exec="ros2_control_node"
+        name="controller_manager"
+        output="screen">
+        <param name="robot_description" value="$(var robot_description)" />
+        <param from="$(find-pkg-share robot_bringup)/config/robot_controllers.yaml" />
+    </node>
+
+    <!-- State broadcaster — publishes all joint states -->
+    <node pkg="controller_manager"
+        exec="spawner"
+        args="joint_state_broadcaster" />
+
+    <!-- Gantry trajectory controller -->
+    <node pkg="controller_manager"
+        exec="spawner"
+        args="joint_trajectory_controller" />
+
+    <!-- Mobile base diff drive controller -->
+    <node pkg="controller_manager"
+        exec="spawner"
+        args="diff_drive_controller" />
+
+    <!-- Gantry velocity controller — inactive by default, activated for manual teleop -->
+    <node pkg="controller_manager"
+        exec="spawner"
+        args="gantry_velocity_controller --inactive" />
+
+    <!-- Gripper interface node -->
+    <node pkg="robot_gripper"
+        exec="gripper_interface_node"
+        name="gripper_interface_node"
+        output="screen" />
+</launch>

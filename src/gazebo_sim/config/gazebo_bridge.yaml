@@ -1,0 +1,8 @@
+# gz_ros2_control takes over /cmd_vel, /joint_states, /odom, /tf — no bridges needed.
+# Only /clock is bridged so ROS nodes can use simulation time.
+
+- ros_topic_name: "/clock"
+  gz_topic_name: "/clock"
+  ros_type_name: "rosgraph_msgs/msg/Clock"
+  gz_type_name: "gz.msgs.Clock"
+  direction: GZ_TO_ROS

@@ -1,0 +1,80 @@
+<launch>
+
+    <let name="urdf_path"
+         value="$(find-pkg-share gazebo_sim)/urdf/robot_gazebo.urdf.xacro" />
+    <let name="gazebo_config_path"
+         value="$(find-pkg-share gazebo_sim)/config/gazebo_bridge.yaml" />
+    <let name="rviz_config_path"
+         value="$(find-pkg-share robot_description)/rviz/rviz_config.rviz" />
+
+    <set_env name="GZ_SIM_RESOURCE_PATH"
+             value="$(find-pkg-prefix robot_description)/share" />
+
+    <!-- Robot state publisher — builds TF from joint states.
+         gz_ros2_control publishes ros2_control joints; gripper_sim_node publishes finger joints.
+         robot_state_publisher merges them by joint name. -->
+    <node pkg="robot_state_publisher" exec="robot_state_publisher">
+        <param name="robot_description"
+               value="$(command 'xacro $(var urdf_path)')" />
+        <param name="use_sim_time" value="true" />
+    </node>
+
+    <!-- Gazebo Harmonic (empty world) -->
+    <include file="$(find-pkg-share ros_gz_sim)/launch/gz_sim.launch.py">
+        <arg name="gz_args" value="-r empty.sdf" />
+    </include>
+
+    <!-- Spawn robot into Gazebo — gz_ros2_control plugin starts automatically -->
+    <node pkg="ros_gz_sim" exec="create" output="screen"
+          args="-name selena -topic robot_description" />
+
+    <!-- Bridge: only /clock is needed (gz_ros2_control owns all other ROS topics) -->
+    <node pkg="ros_gz_bridge" exec="parameter_bridge" output="screen">
+        <param name="config_file" value="$(var gazebo_config_path)" />
+        <param name="use_sim_time" value="true" />
+    </node>
+
+    <!-- ros2_control controllers (spawned against controller_manager inside Gazebo) -->
+    <node pkg="controller_manager" exec="spawner"
+          args="joint_state_broadcaster --controller-manager-timeout 30" />
+
+    <node pkg="controller_manager" exec="spawner"
+          args="joint_trajectory_controller --controller-manager-timeout 60 --switch-timeout 60" />
+
+    <node pkg="controller_manager" exec="spawner"
+          args="diff_drive_controller --controller-manager-timeout 30" />
+
+    <!-- Inactive by default — activate for manual gantry teleop -->
+    <node pkg="controller_manager" exec="spawner"
+          args="gantry_velocity_controller --inactive --controller-manager-timeout 30" />
+
+    <node pkg="controller_manager" exec="spawner"
+          args="gripper_controller --controller-manager-timeout 30" />
+
+    <!-- Gripper simulator — replaces the Arduino+CAN path, no hardware needed -->
+    <node pkg="robot_gripper" exec="gripper_sim_node" output="screen">
+        <param name="use_sim_time" value="true" />
+    </node>
+
+    <!-- RViz -->
+    <node pkg="rviz2" exec="rviz2" output="screen"
+          args="-d $(var rviz_config_path)" />
+
+</launch>
+
+<!-- Launch command:
+     ros2 launch gazebo_sim gz_sim.launch.xml
+
+Manual test commands (same topics as real robot):
+
+  Gripper:
+    ros2 topic pub /gripper/angle std_msgs/msg/Int32 "{data: 55}"   # open
+    ros2 topic pub /gripper/angle std_msgs/msg/Int32 "{data: 0}"    # close
+
+  Mobile base:
+    ros2 topic pub -r 10 /diff_drive_controller/cmd_vel geometry_msgs/msg/TwistStamped \
+      "{twist: {linear: {x: 0.3}, angular: {z: 0.0}}}"
+
+  Gantry (position, via JTC):
+    See joint_trajectory_controller/follow_joint_trajectory action
+-->

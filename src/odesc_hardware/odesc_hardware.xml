@@ -1,0 +1,10 @@
+<library path="odesc_hardware">
+  <class
+    name="odesc_hardware/OdescHardwareInterface"
+    type="odesc_hardware::OdescHardwareInterface"
+    base_class_type="hardware_interface::SystemInterface">
+    <description>
+      ros2_control hardware interface for ODrive ODESC boards via SocketCAN
+    </description>
+  </class>
+</library>

@@ -1,0 +1,92 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <!-- ──────────────────────────────────────────
+         Gantry — MKS Servo stepper axes
+    ────────────────────────────────────────── -->
+    <ros2_control name="SelenaGantryControl" type="system">
+        <hardware>
+            <plugin>mks_servo_hardware/GantryHardwareInterface</plugin>
+            <param name="can_interface">can0</param>
+        </hardware>
+
+        <joint name="x_axis_joint">
+            <command_interface name="position">
+                <param name="min">0.0</param>
+                <param name="max">${x_axis_travel}</param>
+            </command_interface>
+            <command_interface name="velocity"/>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+
+        <joint name="y_axis_joint">
+            <command_interface name="position">
+                <param name="min">0.0</param>
+                <param name="max">${y_axis_travel}</param>
+            </command_interface>
+            <command_interface name="velocity"/>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+
+        <joint name="z_axis_joint">
+            <command_interface name="position">
+                <param name="min">0.0</param>
+                <param name="max">${z_axis_travel}</param>
+            </command_interface>
+            <command_interface name="velocity"/>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+
+    </ros2_control>
+
+    <!-- ──────────────────────────────────────────
+         Mobile base — ODrive ODESC hoverboard wheels
+    ────────────────────────────────────────── -->
+    <ros2_control name="OdescWheelControl" type="system">
+        <hardware>
+            <plugin>odesc_hardware/OdescHardwareInterface</plugin>
+            <param name="can_interface">can0</param>
+        </hardware>
+
+        <!-- Left front wheel — ODrive board 1, M0, node 6 -->
+        <joint name="left_leg_front_wheel_joint">
+            <param name="can_node_id">6</param>
+            <param name="invert">false</param>
+            <command_interface name="velocity"/>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+
+        <!-- Left back wheel — ODrive board 1, M1, node 5 -->
+        <joint name="left_leg_back_wheel_joint">
+            <param name="can_node_id">5</param>
+            <param name="invert">false</param>
+            <command_interface name="velocity"/>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+
+        <!-- Right front wheel — ODrive board 2, M0, node 7 -->
+        <joint name="right_leg_front_wheel_joint">
+            <param name="can_node_id">7</param>
+            <param name="invert">false</param>
+            <command_interface name="velocity"/>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+
+        <!-- Right back wheel — ODrive board 2, M1, node 8 -->
+        <joint name="right_leg_back_wheel_joint">
+            <param name="can_node_id">8</param>
+            <param name="invert">false</param>
+            <command_interface name="velocity"/>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+
+    </ros2_control>
+
+</robot>

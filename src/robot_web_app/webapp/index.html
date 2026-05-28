@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <title>Selena Robot Control</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/roslibjs/1.1.0/roslib.min.js"></script>
+</head>
+<body>
+<div id="app">
+    <div id="header">
+        <h1>Selena Robot</h1>
+        <div id="status">
+            <span id="connection-dot"></span>
+            <span id="connection-text">Disconnected</span>
+        </div>
+    </div>
+
+    <div id="subheader">
+        <div id="manual-toggle-wrap">
+            <div id="toggle-track">
+                <div id="toggle-knob"></div>
+            </div>
+            <span id="manual-label">manual mode: off</span>
+        </div>
+    </div>
+
+    <div id="main">
+
+        <div id="controls-column">
+            <!-- Top row — joysticks side by side -->
+            <div id="joystick-row">
+                <div class="panel" id="panel-base">
+                    <div class="panel-label">Mobile Base</div>
+                    <canvas id="base-joystick"></canvas>
+                    <span class="speed-label">Speed: <span id="base-speed-val">--</span> m/s</span>
+                    <input type="range" id="base-speed" class="hslider" />
+                </div>
+
+                <div class="panel" id="panel-gantry">
+                    <div class="panel-header">
+                        <span class="panel-label">Gantry X / Y</span>
+                        <span id="z-label">Z</span>
+                    </div>
+                    <div class="panel-row">
+                        <canvas id="gantry-joystick"></canvas>
+                        <div id="z-controls">
+                            <button class="z-btn" id="z-up">▲</button>
+                            <button class="z-btn" id="z-down">▼</button>
+                        </div>
+                    </div>
+                    <span class="speed-label">Speed: <span id="gantry-speed-val">--</span> m/s</span>
+                    <input type="range" id="gantry-speed" class="hslider" />
+                </div>
+            </div>
+
+            <!-- Gripper panel — below joysticks -->
+            <div class="panel" id="panel-gripper">
+                <div class="panel-label">Gripper</div>
+                <input type="range" id="gripper-slider"
+                       min="0" max="55" step="1" value="0"
+                       class="gripper-hslider" />
+                <span class="speed-label">
+                    <span id="gripper-state-label">closed</span>
+                    &nbsp;—&nbsp;
+                    <input class="val-box" id="gripper-deg-val" value="0" />&nbsp;°
+                </span>
+            </div>
+        </div>
+
+        <!-- Status panel — fixed on desktop right, in-flow below controls on portrait -->
+        <div id="status-panel">
+            <div id="voltage-box" class="info-box">
+                <span class="info-label">🔋 left wheels</span>
+                <input class="val-box no-interact no-interact-js" id="voltage-left" readonly tabindex="-1" />
+                <span class="info-unit">V</span>
+                <span class="info-label">🔋 right wheels</span>
+                <input class="val-box no-interact no-interact-js" id="voltage-right" readonly tabindex="-1" />
+                <span class="info-unit">V</span>
+            </div>
+            <div id="gantry-pos-box" class="info-box">
+                <span class="info-label">X axis</span>
+                <input class="val-box" id="gantry-x-val" placeholder="--" />
+                <span class="info-unit">mm</span>
+                <span class="info-label">Y axis</span>
+                <input class="val-box" id="gantry-y-val" placeholder="--" />
+                <span class="info-unit">mm</span>
+                <span class="info-label">Z axis</span>
+                <input class="val-box" id="gantry-z-val" placeholder="--" />
+                <span class="info-unit">mm</span>
+            </div>
+            <div id="odom-box" class="info-box">
+                <span class="info-label">odom X</span>
+                <input class="val-box no-interact no-interact-js" id="odom-x-val" readonly tabindex="-1" />
+                <span class="info-unit">m</span>
+                <span class="info-label">odom Y</span>
+                <input class="val-box no-interact no-interact-js" id="odom-y-val" readonly tabindex="-1" />
+                <span class="info-unit">m</span>
+                <span class="info-label">odom φ</span>
+                <input class="val-box no-interact no-interact-js" id="odom-phi-val" readonly tabindex="-1" />
+                <span class="info-unit">°</span>
+            </div>
+            <div id="global-pos-box" class="info-box">
+                <span class="info-label">global X</span>
+                <input class="val-box no-interact no-interact-js" id="global-x-val" readonly tabindex="-1" />
+                <span class="info-unit">m</span>
+                <span class="info-label">global Y</span>
+                <input class="val-box no-interact no-interact-js" id="global-y-val" readonly tabindex="-1" />
+                <span class="info-unit">m</span>
+                <span class="info-label">global φ</span>
+                <input class="val-box no-interact no-interact-js" id="global-phi-val" readonly tabindex="-1" />
+                <span class="info-unit">°</span>
+            </div>
+        </div>
+
+    </div>
+
+    <div id="footer">
+        Engineering for a Better World
+    </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
