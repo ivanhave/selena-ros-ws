@@ -65,12 +65,13 @@ struct MissionCommand {
     std::string quantity_unit;  // "meters", "seeds", "liters"
     float       start_x;        // world coordinates (odometry / future RTK)
     float       start_y;
+    float       start_yaw;      // world heading in radians (0 = robot faces +X)
 };
 ```
 
 ### Mission Registry (self-registration)
 `MissionRegistry` is a singleton map from mission_type string → factory function.
-`MissionManager` calls `MissionRegistry::instance().create(cmd.mission_type, node, cmd)` —
+`MissionManager` calls `MissionRegistry::instance().create(cmd.mission_type, node, cmd, nav)` —
 it has zero knowledge of specific mission classes.
 
 Each mission class registers itself at static-init time by placing at the bottom of its `.cpp`:
@@ -94,11 +95,12 @@ MissionBase (abstract)
 ```
 
 ### Mission Manager (generic orchestrator)
-`MissionManager(rclcpp::Node::SharedPtr node)` — no knowledge of specific mission types.
+`MissionManager(rclcpp::Node::SharedPtr node, shared_ptr<NavigationProvider> nav)`
+No knowledge of specific mission types or navigation implementation.
 Responsibilities:
 - Receive MissionCommand
-- Navigate robot to start position (stub — future Nav2 integration)
-- Instantiate mission via registry
+- Navigate robot to start position via NavigationProvider
+- Instantiate mission via registry (passes nav through to mission)
 - Call validate → plan → execute → report
 - Proxy pause/resume/abort/get_progress/get_current_step to active mission
 
@@ -112,8 +114,9 @@ action/MissionAction.action
         string  target
         float32 quantity
         string  quantity_unit
-        float32 start_x
-        float32 start_y
+        float32 start_x       # world X (odometry/RTK)
+        float32 start_y       # world Y
+        float32 start_yaw     # world heading in radians; 0 = robot faces +X, pi/2 = +Y
     Result:
         bool    success
         string  report
@@ -130,8 +133,12 @@ action/MissionAction.action
 Send a goal:
 ```bash
 ros2 action send_goal /mission robot_missions/action/MissionAction \
-  "{mission_type: 'plant', target: 'naut', quantity: 1.0, quantity_unit: 'meters', start_x: 0.0, start_y: 0.0}"
+  "{mission_type: 'plant', target: 'naut', quantity: 8.0, quantity_unit: 'seeds', start_x: 0.0, start_y: 0.0, start_yaw: 0.0}"
 ```
+
+`start_yaw` is the robot's required heading at the start of the mission in world frame radians.
+`MissionManager::navigate_to_start()` passes all three fields directly to `NavigationProvider::move_to(Pose2D)`.
+If omitted in the goal, the ROS2 IDL default is `0.0` (faces odometry +X axis).
 
 ---
 
@@ -142,8 +149,8 @@ ros2 action send_goal /mission robot_missions/action/MissionAction \
 #### Piece 0 — PlantingMission : MissionBase
 Implements MissionBase for planting. Owns and coordinates Pieces 1–4.
 Registered with `REGISTER_MISSION("plant", PlantingMission)`.
-Has `static create_from_command(node, cmd)` — loads db_path via ament_index,
-sets seed type from `cmd.target`, quantity from `cmd.quantity`.
+Has `static create_from_command(node, cmd, nav)` — loads db_path via ament_index,
+sets seed type from `cmd.target`, quantity from `cmd.quantity`, stores nav for ExecutionEngine.
 
 #### Piece 1 — Seed Database (`config/seeds.csv`)
 Static CSV file. Six columns:
@@ -190,19 +197,18 @@ Gripper fingers move in an arc (circular mechanism) — calibration per seed typ
 Note: `ToolBase` is a planting concept. Other missions (weeding, watering) will have their
 own actuator interfaces that do NOT inherit `ToolBase`.
 
-#### Piece 4 — Execution Engine (hardware orchestrator)
-Knows: ROS2, JTC action client, diff_drive publisher, gripper topic.
-Knows nothing about: seed spacing, tool type, global coordinates.
+#### Piece 4 — Execution Engine (gantry orchestrator)
+Knows: ROS2, JTC trajectories, gripper topic.
+Knows nothing about: seed spacing, tool type, global coordinates, navigation implementation.
 
-Optional interfaces (passed as pointers, null = feature disabled):
+Injected dependencies:
+- `shared_ptr<NavigationProvider>` — moves the base between stops; missions call get_pose() / move_to()
 - `DepthSensor*` — measures soil distance; nullptr = use fixed depth from seeds.csv
 - `SafetyChecker*` — checks before base movement; nullptr = no check (planned, not implemented)
 
 Sequence per robot stop:
 ```
-[safety_checker->is_safe_to_move() if not nullptr]
-move_base(advance_meters)
-wait_until_stopped()
+nav->move_to(next_stop_pose)   ← computed from current pose + advance_meters * forward
 for each seed in this stop:
     move_gantry(tray_gx, tray_gy, tray_z_approach)
     lower_z(tray_z_pick)
@@ -244,16 +250,16 @@ gy  = y_offset + row * spacing_y
 robot_advance = seeds_in_y * spacing_y
 ```
 
-### Verified example
+### Verified example (naut, hardware-tested 2026-05-31)
 ```
-x_travel=0.845, spacing_x=0.50 → seeds_in_x=2, x_offset=0.1725m
-y_travel=0.290, spacing_y=0.25 → seeds_in_y=2, y_offset=0.02m
-robot_advance = 2 * 0.25 = 0.50m
+x_travel=0.845, spacing_x=0.60 → seeds_in_x=2, x_offset=0.1225m
+y_travel=0.290, spacing_y=0.20 → seeds_in_y=2, y_offset=0.045m
+robot_advance = 2 * 0.20 = 0.40m
 
-Stop 1: rows at world_y = 0.02m and 0.27m
-Robot moves 0.50m
-Stop 2: rows at world_y = 0.52m and 0.77m
-Gap between stops: 0.52 - 0.27 = 0.25m ✓
+Stop 0: rows at world_y = 0.045m and 0.245m
+Robot moves 0.40m (via NavigationProvider)
+Stop 1: rows at world_y = 0.445m and 0.645m
+Gap between stops: 0.445 - 0.245 = 0.20m = spacing_y ✓
 ```
 
 ---
@@ -316,30 +322,81 @@ All values currently 0.0 — physically measure and fill before first real run.
 
 ---
 
-## 7. Localization Strategy
+## 7. Navigation Architecture
 
-### Current
-Odometry only. Robot starts at world origin (0,0) at strip start.
-`navigate_to_start()` is a stub — assumes robot is already positioned.
+### NavigationProvider (package: `robot_navigation`)
 
-### Future
-RTK GPS. Code written to accept world coordinates from the start.
-Switching odometry to RTK = change localization source only.
-Planner and executor unchanged.
+All mobile base positioning goes through a single abstract interface. Missions have zero
+knowledge of odometry, Nav2, or any other implementation.
+
+```cpp
+struct Pose2D { float x, y, yaw; };
+
+class NavigationProvider {
+    virtual Pose2D get_pose()        = 0;  // where is the robot now
+    virtual bool   move_to(Pose2D)   = 0;  // go there, block until done
+};
+```
+
+The concrete implementation is created once in `mission_server_node.cpp` and injected
+into `MissionManager`, which passes it through the registry to every mission and down
+to `ExecutionEngine`. Swapping implementations is one line:
+
+```cpp
+// Current
+auto nav = std::make_shared<OdometryNavigator>(node);
+
+// Future — Nav2
+auto nav = std::make_shared<Nav2Navigator>(node);
+```
+
+### OdometryNavigator (current implementation)
+Package: `robot_navigation/src/odometry_navigator.cpp`
+- Subscribes to `/diff_drive_controller/odom` for pose and velocity
+- `move_to(target)`: publishes 0.1 m/s cmd_vel, polls odometry distance, then polls
+  velocity until stopped (< 0.01 m/s) — identical behaviour to previous ExecutionEngine code
+- `get_pose()`: returns current `{odom_x, odom_y, odom_yaw}`
+
+### Nav2Navigator (future)
+- `move_to(target)`: sends `NavigateToPose` action goal, blocks on result
+- `get_pose()`: reads from AMCL / `/tf`
+- No changes needed anywhere else
+
+### Localization evolution
+```
+Now:    OdometryNavigator   → wheel encoders only
+Next:   Nav2Navigator       → AMCL + map + obstacle avoidance
+Future: Nav2Navigator + RTK → centimetre-accurate field positioning
+```
+Each step = replace one class, zero mission changes.
 
 ---
 
 ## 8. First Version Scope
 - Single strip, one direction, no turning
-- Seed type: naut/chickpea (or floor test at any point)
+- Seed type: naut/chickpea (hardware-tested: 8 seeds, 2 stops, 600×200mm)
 - Tool: gripper (MG996R, 0°=open, 55°=closed)
-- Depth: fixed from seeds.csv (DepthSensor = nullptr)
-- Localization: odometry (navigate_to_start stub)
-- Command: `mission_type="plant"  target="naut"  quantity=1.0  quantity_unit="meters"`
+- Depth: fixed from seeds.csv (FlatGroundDepthSensor, soil_z from tray_positions.yaml)
+- Navigation: OdometryNavigator (wheel odometry, no Nav2)
+- Command: `mission_type="plant"  target="naut"  quantity=8.0  quantity_unit="seeds"  start_yaw=0.0`
 
 ---
 
 ## 9. Package Structure
+
+### robot_navigation (new — infrastructure, no mission knowledge)
+```
+robot_navigation/
+├── CMakeLists.txt
+├── package.xml
+├── include/robot_navigation/
+│   ├── navigation_provider.hpp    ← Pose2D struct + NavigationProvider abstract interface
+│   └── odometry_navigator.hpp     ← OdometryNavigator declaration
+└── src/
+    └── odometry_navigator.cpp     ← current implementation (odom + cmd_vel)
+```
+
+### robot_missions (depends on robot_navigation)
 ```
 robot_missions/
 ├── ARCHITECTURE.md
@@ -349,10 +406,10 @@ robot_missions/
 │   └── MissionAction.action
 ├── config/
 │   ├── seeds.csv
-│   └── tray_positions.yaml        ← gripper tray ROS2 params (fill before real run)
+│   └── tray_positions.yaml        ← gripper tray ROS2 params + soil_surface_z_m
 ├── include/robot_missions/
 │   ├── mission_base.hpp           ← MissionBase lifecycle + MissionCommand + MissionResult
-│   ├── mission_manager.hpp        ← thin orchestrator, type-agnostic
+│   ├── mission_manager.hpp        ← orchestrator; takes NavigationProvider
 │   ├── mission_registry.hpp       ← singleton registry + REGISTER_MISSION macro
 │   ├── planting/
 │   │   ├── planting_mission.hpp
@@ -360,20 +417,23 @@ robot_missions/
 │   │   ├── planting_planner.hpp
 │   │   ├── tool_interface.hpp     ← ToolBase abstract + TrayPose struct
 │   │   ├── gripper_tool.hpp
-│   │   ├── execution_engine.hpp   ← optional DepthSensor*, SafetyChecker* (future)
-│   │   └── depth_sensor.hpp       ← DepthSensor abstract interface
+│   │   ├── execution_engine.hpp   ← gantry only; NavigationProvider + DepthSensor* injected
+│   │   ├── depth_sensor.hpp       ← DepthSensor abstract interface
+│   │   └── flat_ground_depth_sensor.hpp
 │   └── weeding/
 │       └── weeding_mission.hpp    ← placeholder with full design notes
-└── src/
-    ├── mission_manager.cpp
-    ├── mission_registry.cpp
-    ├── mission_server_node.cpp    ← rclcpp_action server executable
-    └── planting/
-        ├── planting_mission.cpp   ← contains REGISTER_MISSION("plant", PlantingMission)
-        ├── seed_database.cpp
-        ├── planting_planner.cpp
-        ├── gripper_tool.cpp
-        └── execution_engine.cpp
+├── src/
+│   ├── mission_manager.cpp
+│   ├── mission_registry.cpp
+│   ├── mission_server_node.cpp    ← creates OdometryNavigator; rclcpp_action server
+│   └── planting/
+│       ├── planting_mission.cpp   ← contains REGISTER_MISSION("plant", PlantingMission)
+│       ├── seed_database.cpp
+│       ├── planting_planner.cpp
+│       ├── gripper_tool.cpp
+│       └── execution_engine.cpp
+└── test/
+    └── planting_planner_test.cpp  ← 5 gtests (8-seed / 2-stop geometry)
 ```
 
 ---
@@ -382,15 +442,17 @@ robot_missions/
 
 | Item | File | Status |
 |---|---|---|
-| Tray coordinates | `config/tray_positions.yaml` | All 0.0 — measure physically |
-| naut/pea depth_mm | `config/seeds.csv` | Placeholder — measure real planting depth |
-| navigate_to_start() | `mission_manager.cpp` | Stub — always returns true |
-| DepthSensor | `execution_engine.cpp` | nullptr — soil depth assumed flat |
+| Tray coordinates | `config/tray_positions.yaml` | Filled for floor test (0.800/0.200/0.220m) — re-measure when tray physically mounted |
+| naut/pea depth_mm | `config/seeds.csv` | naut=0 (surface test) — measure real planting depth |
+| **NavigationProvider hardware test** | `robot_navigation/` | Built and smoke-tested; full 8-seed run pending hardware power-on |
+| Nav2Navigator | `robot_navigation/` | Not yet implemented — replace OdometryNavigator when Nav2 is set up |
+| DepthSensor | `execution_engine.cpp` | FlatGroundDepthSensor (configured soil_z) — real sensor not mounted |
 | SafetyChecker | `execution_engine.hpp` | Not yet implemented — person check before base move |
 | VacuumTool | planned | tool_id=2 in seeds.csv will error until implemented |
 | WeedingMission | `weeding/weeding_mission.hpp` | Placeholder only |
 | Batch seed picking | — | Currently one seed per tray visit |
 | Turning between strips | — | Not designed yet |
+| ODESC wheels CAN | hardware | No traffic on node IDs 5–8 — check CAN connector |
 
 ---
 
@@ -398,10 +460,12 @@ robot_missions/
 
 1. Create `include/robot_missions/<name>/<name>_mission.hpp` — inherit `MissionBase`.
 2. Create `src/<name>/<name>_mission.cpp` — implement all lifecycle methods.
-3. Add a static factory:
+3. Add a static factory with the NavigationProvider parameter:
    ```cpp
    static std::unique_ptr<YourMission> create_from_command(
-       rclcpp::Node::SharedPtr node, const MissionCommand & cmd);
+       rclcpp::Node::SharedPtr node,
+       const MissionCommand & cmd,
+       std::shared_ptr<robot_navigation::NavigationProvider> nav);
    ```
 4. At the bottom of the `.cpp`, inside `namespace robot_missions`:
    ```cpp
@@ -413,6 +477,7 @@ robot_missions/
 6. `#include` the mission header in `mission_server_node.cpp` to force static registration
    to link even when the linker would otherwise dead-strip the TU.
 
+Missions that don't move the base can accept and ignore the `nav` parameter.
 Zero changes to `MissionBase`, `MissionManager`, `MissionRegistry`, or `mission_server_node.cpp`
 (other than the include).
 
@@ -449,7 +514,7 @@ ros2 run robot_missions mission_server \
 
 # Terminal 4 — send goal
 ros2 action send_goal /mission robot_missions/action/MissionAction \
-  "{mission_type: 'plant', target: 'naut', quantity: 1.0, quantity_unit: 'seeds', start_x: 0.0, start_y: 0.0}"
+  "{mission_type: 'plant', target: 'naut', quantity: 1.0, quantity_unit: 'seeds', start_x: 0.0, start_y: 0.0, start_yaw: 0.0}"
 ```
 
 ### Pre-flight checks
@@ -476,4 +541,4 @@ safety for free by passing a `SafetyChecker` to its executor.
 
 ---
 
-*Last updated: 2026-05-28*
+*Last updated: 2026-05-31 — added start_yaw to MissionAction goal, MissionCommand, and navigate_to_start*

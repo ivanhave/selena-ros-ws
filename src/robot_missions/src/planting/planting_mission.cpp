@@ -2,28 +2,32 @@
 #include "robot_missions/planting/gripper_tool.hpp"
 #include "robot_missions/mission_registry.hpp"
 #include <ament_index_cpp/get_package_share_directory.hpp>
+#include <cmath>
 
 namespace robot_missions
 {
 
 PlantingMission::PlantingMission(
     rclcpp::Node::SharedPtr node,
-    const std::string & seed_db_path)
+    const std::string & seed_db_path,
+    std::shared_ptr<robot_navigation::NavigationProvider> nav)
 : node_(node)
 , seed_db_path_(seed_db_path)
+, nav_(nav)
 {
     RCLCPP_INFO(node_->get_logger(), "PlantingMission created.");
 }
 
 std::unique_ptr<PlantingMission> PlantingMission::create_from_command(
     rclcpp::Node::SharedPtr node,
-    const MissionCommand & cmd)
+    const MissionCommand & cmd,
+    std::shared_ptr<robot_navigation::NavigationProvider> nav)
 {
     std::string db_path =
         ament_index_cpp::get_package_share_directory("robot_missions")
         + "/config/seeds.csv";
 
-    auto mission = std::make_unique<PlantingMission>(node, db_path);
+    auto mission = std::make_unique<PlantingMission>(node, db_path, nav);
     mission->set_seed_type(cmd.target);
 
     if (cmd.quantity_unit == "meters") {
@@ -93,6 +97,10 @@ bool PlantingMission::plan()
 
 bool PlantingMission::execute()
 {
+    if (aborted_.load()) {
+        current_step_ = "aborted";
+        return false;
+    }
     current_step_ = "executing";
 
     // Tool factory — select implementation based on seed profile's tool_id.
@@ -109,8 +117,12 @@ bool PlantingMission::execute()
 
     tool_->configure(profile_);
 
-    // TODO: replace nullptr with a real DepthSensor once hardware is mounted
-    engine_ = std::make_unique<ExecutionEngine>(node_, tool_, &paused_, nullptr);
+    if (!node_->has_parameter("soil_surface_z_m")) node_->declare_parameter("soil_surface_z_m", 0.0);
+    float soil_z = static_cast<float>(
+        node_->get_parameter("soil_surface_z_m").as_double());
+    flat_sensor_ = std::make_unique<FlatGroundDepthSensor>(soil_z);
+
+    engine_ = std::make_unique<ExecutionEngine>(node_, tool_, nav_, &paused_, flat_sensor_.get());
     seeds_planted_ = engine_->execute(planner_);
 
     current_step_ = aborted_.load() ? "aborted" : "complete";
@@ -146,8 +158,13 @@ MissionResult PlantingMission::report()
     MissionResult result;
     result.success           = !aborted_.load() && seeds_planted_ == planner_.get_total_seeds();
     result.items_completed   = seeds_planted_;
-    result.distance_covered_m =
-        planner_.get_total_stops() * planner_.get_robot_advance();
+    if (seeds_planted_ > 0) {
+        uint32_t last_stop = planner_.get_stop_index(seeds_planted_);
+        result.distance_covered_m =
+            static_cast<float>(last_stop + 1) * planner_.get_robot_advance();
+    } else {
+        result.distance_covered_m = 0.0f;
+    }
     result.report =
         "Planted " + std::to_string(seeds_planted_) +
         " seeds of " + seed_type_ +
@@ -158,13 +175,31 @@ MissionResult PlantingMission::report()
 float PlantingMission::get_progress()
 {
     if (planner_.get_total_seeds() == 0) return 0.0f;
-    return static_cast<float>(seeds_planted_) /
+    uint32_t planted = engine_ ? engine_->get_seeds_planted() : seeds_planted_;
+    return static_cast<float>(planted) /
            static_cast<float>(planner_.get_total_seeds());
 }
 
 std::string PlantingMission::get_current_step()
 {
     return current_step_;
+}
+
+std::vector<robot_navigation::Pose2D> PlantingMission::get_route_waypoints(
+    float start_x, float start_y, float start_yaw) const
+{
+    std::vector<robot_navigation::Pose2D> stops;
+    uint32_t n = planner_.get_total_stops();
+    if (n == 0) return stops;
+    const float cosY = std::cos(start_yaw);
+    const float sinY = std::sin(start_yaw);
+    const float adv  = planner_.get_robot_advance();
+    stops.reserve(n);
+    for (uint32_t i = 0; i < n; i++) {
+        float d = static_cast<float>(i) * adv;
+        stops.push_back({ start_x + d * cosY, start_y + d * sinY, start_yaw });
+    }
+    return stops;
 }
 
 } // namespace robot_missions

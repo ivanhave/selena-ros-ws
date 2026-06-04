@@ -5,6 +5,13 @@ float32 quantity          # 5.0
 string  quantity_unit     # "meters", "seeds", "liters"
 float32 start_x           # world X coordinate (odometry/RTK)
 float32 start_y           # world Y coordinate
+float32 start_yaw         # world heading in radians (0 = robot faces +X, pi/2 = +Y)
+# Mission-specific overflow parameters — key=value pairs, one per line.
+# Use when a mission type needs parameters that don't fit the fields above.
+# Example (spray mission): concentration=0.05 flow_rate=1.2 chemical=herbicide_a
+# Example (water mission): duration_s=30 valve_id=2
+# Parsed by each mission's create_from_command() — ignored by missions that don't use it.
+string  extra_params      # optional; empty string if unused
 ---
 # Result — returned when mission completes
 bool    success

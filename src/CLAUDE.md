@@ -2,198 +2,201 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+
+You read claude.md, to get acquainted with the current state, then ask the user for the task. Don't initialize by starting a task without consent.
+
+**Read `progress.md`** to see where we are. When you build code, test it before calling it done — on hardware when applicable. If hardware is not connected, ask.
+
+## progress.md maintenance
+- Current + previous session: full detail.
+- Older sessions: collapse to one-paragraph summary.
+- Backlog and Known Hardware Issues: always current.
+- Delete "what remains / next steps" from completed entries. When adding a new session entry, collapse the one that is now two sessions old.
+
+---
+
 ## Build & Run
 
 All commands run from the workspace root (`/home/ivan/selena_ros_ws`), not from `src/`.
 
 ```bash
-# Build all packages
-cd /home/ivan/selena_ros_ws && colcon build
-
-# Build a single package
-colcon build --packages-select <package_name>
-
-# Source after building
+cd /home/ivan/selena_ros_ws && colcon build                        # build all
+colcon build --packages-select <package>                           # single package
 source install/setup.bash
 
-# Run C++ tests (colcon)
-colcon test --packages-select <package_name>
-colcon test-result --verbose
+colcon test --packages-select <package> && colcon test-result --verbose  # C++ tests
+cd src/<package> && python3 -m pytest test/                              # Python tests
 
-# Run Python lint tests
-cd src/<package> && python3 -m pytest test/
+# Real robot (requires can0 + all hardware)
+ros2 launch robot_bringup robot.launch.py
 
-# Launch real robot (requires can0 and all hardware)
-ros2 launch robot_bringup robot.launch.xml
-
-# Launch Gazebo simulation (no hardware needed)
+# Gazebo simulation (no hardware)
 ros2 launch gazebo_sim gz_sim.launch.xml
 
-# View robot in RViz only
-ros2 launch robot_description display.launch.xml
+# Web UI (port 8080) — starts rosbridge + webapp
+ros2 launch robot_web_app teleop.launch.xml
 
-# Start web teleop UI (requires rosbridge running separately)
-ros2 run robot_web_app serve_webapp
-ros2 run rosbridge_server rosbridge_websocket
-
-# Run mission server (real robot — load tray coordinates from YAML)
+# Mission server
 ros2 run robot_missions mission_server \
   --ros-args --params-file install/robot_missions/share/robot_missions/config/tray_positions.yaml
 
 # Send a planting goal
 ros2 action send_goal /mission robot_missions/action/MissionAction \
-  "{mission_type: 'plant', target: 'naut', quantity: 1.0, quantity_unit: 'meters', start_x: 0.0, start_y: 0.0}"
+  "{mission_type: 'plant', target: 'naut', quantity: 8.0, quantity_unit: 'seeds', start_x: 0.0, start_y: 0.0, start_yaw: 0.0}"
 ```
+
+---
 
 ## Package Overview
 
 | Package | Language | Role |
 |---|---|---|
 | `robot_description` | URDF/xacro | URDF, meshes, RViz config |
-| `robot_bringup` | XML launch | Real robot launch + controller YAML |
+| `robot_bringup` | Python launch | Real robot launch + controller YAML |
 | `odesc_hardware` | C++ | ros2_control plugin for ODrive/ODESC wheel motors via SocketCAN |
 | `mks_servo_hardware` | C++ | ros2_control plugin for MKS servo stepper gantry via SocketCAN |
 | `robot_gripper` | C++ | Standalone gripper node — Arduino servo via CAN |
-| `robot_missions` | C++ | Mission framework: MissionBase, self-registration registry, PlantingMission, action server |
+| `robot_missions` | C++ | Mission framework: MissionBase, registry, PlantingMission, action server |
+| `robot_field` | YAML/config | Single source of truth for field layout (strips, origin) |
+| `robot_navigation` | C++ | NavigationProvider interface + OdometryNavigator; future Nav2Navigator |
 | `robot_vision` | Python | Person detection + safety monitor |
-| `robot_web_app` | JS/Python | Browser teleop UI via rosbridge/roslibjs |
+| `robot_web_app` | JS/Python | Browser teleop + missions UI via rosbridge/roslibjs |
 | `gazebo_sim` | URDF/XML | Gazebo Harmonic simulation (gz_ros2_control — same controllers as real robot) |
+
+---
 
 ## Hardware Architecture
 
-### All hardware uses SocketCAN (`can0`)
-
-Three device groups share the same CAN bus:
+### CAN bus (`can0`)
+All hardware shares one bus. CAN auto-starts via udev on PEAK-System USB-to-CAN adapter plug-in. See `mks_servo_hardware/can_connection_info.md` for udev details.
 - **MKS stepper motors** (gantry): node IDs 1–4 (X1, X2, Y, Z)
-- **ODrive ODESC hoverboard motors** (wheels): node IDs 5–8 (LB, LF, RF, RB)
+- **ODrive ODESC motors** (wheels): node IDs 5–8 (LB, LF, RF, RB)
 - **Gripper Arduino**: CAN ID `0x10` — standalone, not in ros2_control
 
-CAN auto-starts via udev rule on PEAK-System USB-to-CAN adapter plug-in.
-See `mks_servo_hardware/can_connection_info.md` for udev rule details and manual fallback commands.
-
-### ros2_control Hardware Interfaces
-
-Two plugins loaded by `controller_manager`:
+### ros2_control plugins
 
 **`mks_servo_hardware/GantryHardwareInterface`** (gantry X/Y/Z)
-- X axis uses **two physical motors** (X1=ID1, X2=ID2 in parallel). X1 is mechanically inverted — its position and velocity are negated in read/write.
-- `on_activate` runs a mandatory homing sequence: **Z first** (blocking), then X1+X2+Y in parallel.
-- Supports two control modes switched at runtime: position mode (JTC) and velocity mode (gantry_velocity_controller). Mode switch is detected in `perform_command_mode_switch`.
-- State/command vector layout: `[J0_pos, J0_vel, J1_pos, J1_vel, J2_pos, J2_vel]` — joint i at index `[i*2]` and `[i*2+1]`.
+- X uses two motors (X1=ID1, X2=ID2). X1 is mechanically inverted — position/velocity negated in read/write.
+- `on_activate`: mandatory homing — Z first (blocking), then X1+X2+Y in parallel.
+- Two runtime modes: position (JTC) and velocity (gantry_velocity_controller); switched via `perform_command_mode_switch`.
+- State/command layout: `[J0_pos, J0_vel, J1_pos, J1_vel, J2_pos, J2_vel]`.
 
-**`odesc_hardware/OdescHardwareInterface`** (wheels)
-- Each wheel joint has a `can_node_id` and optional `invert` param from URDF.
-- Velocity-only command interface; position and velocity state interfaces.
-- CAN frame parsing routed via callback: `CanInterface` → `OdescDriver::on_can_frame`.
+**`odesc_hardware/OdescHardwareInterface`** (wheels) — velocity-only commands; CAN frames via `OdescDriver::on_can_frame`.
 
-### Gantry Coordinate Mapping (critical — from ARCHITECTURE.md)
-
+### Gantry coordinate mapping (critical)
 The gantry is rotated 90° from `base_link`:
 ```
-Mobile base X (forward) = Gantry Y axis (x_axis_joint, 0.845m travel)
-Mobile base Y (width)   = Gantry X axis (y_axis_joint, 0.290m travel)
-Mobile base Z (up)      = Gantry Z axis (z_axis_joint, 0.250m travel, inverted)
+Mobile base +X (forward) = Gantry Y axis  (x_axis_joint, 0.845 m travel)
+Mobile base +Y (left)    = Gantry X axis  (y_axis_joint, 0.290 m travel)
+Mobile base +Z (up)      = Gantry Z axis  (z_axis_joint, 0.250 m travel, inverted)
 ```
 
 ### Gripper
+Standalone node `/gripper/angle` (`Int32`, 0–55°) → CAN → Arduino → MG996R servo.  
+**0° = open, 55° = closed.** Web app slider is inverted (0 = closed, 55 = open).
 
-`robot_gripper` is a standalone ROS2 node (not a ros2_control plugin):
-- Subscribe `/gripper/angle` (`Int32`, 0–55 degrees) → sends CAN frame to Arduino → waits for echo confirmation.
-- Publish `/gripper/current_angle` (`Int32`) and `/gripper/is_open` (`Bool`).
-- Arduino source: `robot_gripper/arduino/gripper_controller/gripper_controller.ino`.
-- Physical: MG996R servo on circular-finger mechanism. **0° = fully open, 55° = fully closed.**
-- Web app convention: slider 0 = closed (physical 55°), slider 55 = open (physical 0°) — inverted.
+---
 
 ## Controllers
 
-Configured in `robot_bringup/config/robot_controllers.yaml`, spawned in `robot.launch.xml`:
+Configured in `robot_bringup/config/robot_controllers.yaml`, spawned by `robot.launch.py`.  
+JTC is spawned **after** homing completes (via `--controller-manager-timeout 120`).
 
 | Controller | Type | Default state | Controls |
 |---|---|---|---|
-| `joint_state_broadcaster` | JointStateBroadcaster | active | publishes all joint states |
-| `joint_trajectory_controller` | JointTrajectoryController | active | gantry X/Y/Z position (splines) |
+| `joint_state_broadcaster` | JointStateBroadcaster | active | all joint states |
+| `joint_trajectory_controller` | JointTrajectoryController | active | gantry X/Y/Z position |
 | `diff_drive_controller` | DiffDriveController | active | 4 wheels velocity |
-| `gantry_velocity_controller` | ForwardCommandController | **inactive** | gantry X/Y/Z velocity (manual teleop) |
-| `gripper_controller` | ForwardCommandController | active | left/right finger joints (sim only) |
+| `gantry_velocity_controller` | ForwardCommandController | **inactive** | gantry X/Y/Z velocity (teleop) |
+| `gripper_controller` | ForwardCommandController | active | finger joints (sim only) |
 
-Switch between `joint_trajectory_controller` and `gantry_velocity_controller` at runtime — they cannot be active simultaneously (enforced in `prepare_command_mode_switch`).
+JTC and gantry_velocity_controller cannot be active simultaneously.
+
+---
 
 ## Gazebo Simulation
 
-See `SIMULATION_STATUS.md` for full details and file change log.
-
-`gazebo_sim` now uses **`gz_ros2_control`** — the same real ros2_control controllers
-(JTC, DiffDrive, gantry_velocity, gripper_controller) run against Gazebo physics.
-No CAN hardware required. Mission code runs end-to-end against the same ROS2 topics as the real robot.
-
+Same ros2_control controllers (JTC, DiffDrive, gantry_velocity, gripper) run against Gazebo physics. No CAN needed.
 ```bash
-# Terminal 1 — Gazebo + all controllers + RViz
-ros2 launch gazebo_sim gz_sim.launch.xml
-
-# Terminal 2 — Web interface
-ros2 launch robot_web_app teleop.launch.xml
-# Web app: http://localhost:8080
+ros2 launch gazebo_sim gz_sim.launch.xml   # Terminal 1 — Gazebo + controllers + RViz
+ros2 launch robot_web_app teleop.launch.xml # Terminal 2 — http://localhost:8080
 ```
+Key files: `gazebo_sim/urdf/robot_gazebo.urdf.xacro`, `robot_description/urdf/ros2_control.sim.xacro`, `robot_gripper/src/gripper_sim_node.cpp`.
 
-Key files:
-- `gazebo_sim/urdf/robot_gazebo.urdf.xacro` — uses `gz_ros2_control::GazeboSimROS2ControlPlugin`
-- `robot_description/urdf/ros2_control.sim.xacro` — replaces CAN hardware with `GazeboSimSystem`
-- `robot_gripper/src/gripper_sim_node.cpp` — bridges `/gripper/angle` → `/gripper_controller/commands`
+See `SIMULATION_STATUS.md` for Gazebo bring-up details, smoke-test commands, and bugs fixed during initial sim setup.
+
+---
+
+## Field Data (`robot_field`)
+
+Single source of truth for all field geometry. Any ROS node that needs field layout adds `robot_field` as a `<depend>` and reads from its share directory via `ament_index_cpp::get_package_share_directory("robot_field")`.
+
+**`config/field_config.yaml`** — static field layout: strips, origin (world frame x/y/yaw), strip_width (fixed 0.845 m = gantry X travel), strip_length, strip_spacing. Served by `GET/POST /api/field_config`.
+
+**`config/mission_zones.yaml`** — session-persistent mission zones overlaid on strips. Each zone: `strip_id`, `start_along`/`end_along` (meters from strip start, snapped to 0.1 m), `mission_type`, `target`, `status`. Served by `GET/POST /api/mission_zones`. No zones may overlap on the same strip.
+
+See `MAP_ARCHITECTURE.md` for the full field coordinate system, canvas rendering strategy, and future snake-path planning algorithm.
+
+---
 
 ## Mission Framework
 
-See `robot_missions/ARCHITECTURE.md` for full geometry and design details.
+See `robot_missions/ARCHITECTURE.md` for geometry details. See `MAP_ARCHITECTURE.md` for field map and zone planner.
 
-### Core components
+**Lifecycle:** `MissionBase`: `validate() → plan() → execute() → report()` + pause/resume/abort.  
+**`MissionManager(node, nav)`** — navigates to start, creates mission via registry, drives lifecycle.  
+**`MissionRegistry`** — string → factory map. Self-register with `REGISTER_MISSION` macro; add one file, zero other changes.  
+**`mission_server`** — `rclcpp_action::Server<MissionAction>` on `/mission`. Feedback at 2 Hz.  
+**`NavigationProvider`** (`robot_navigation`) — `get_pose()` + `move_to()`. `OdometryNavigator` is the impl (0.1 m/s, odom feedback). Swap to `Nav2Navigator` with one line in `mission_server_node.cpp`.
 
-`MissionBase` defines the lifecycle interface: `validate() → plan() → execute() → report()` plus `pause/resume/abort/get_progress/get_current_step`.
-
-`MissionManager(node)` is type-agnostic — navigates to start (stub), creates mission via registry, drives lifecycle.
-
-`MissionRegistry` — singleton map from `mission_type` string → factory. Missions self-register via `REGISTER_MISSION` macro at static-init time. **Adding a new mission = one new file, zero changes to existing files.**
-
-`mission_server` — `rclcpp_action::Server<MissionAction>` executable. Serves all mission types on action topic `/mission`. Runs `manager.run()` in a thread; feedback timer at 2 Hz.
-
-### PlantingMission internal pieces
-1. **SeedDatabase** — reads `config/seeds.csv`
-   - Columns: `name, spacing_x_mm, spacing_y_mm, depth_mm, tool_id, tool_param`
-   - `tool_param` is generic: gripper reads it as grip angle (degrees); future VacuumTool reads it as suction ms
-2. **PlantingPlanner** — pure math, no ROS2, computes `get_seed_position(index)` and `get_robot_stop(index)` on demand
-3. **ToolBase / GripperTool** — abstract tool interface; `pick()` closes gripper, `release()` opens
-   - `GripperTool` reads tray coordinates from node params loaded via `config/tray_positions.yaml`
-   - Tray coords currently all 0.0 — **must be measured physically before real run**
-4. **ExecutionEngine** — owns ROS2 clients for JTC and diff_drive; runs per-stop sequence
-   - Optional `DepthSensor*` — nullptr until hardware mounted (uses fixed depth from CSV)
-   - Optional `SafetyChecker*` — planned, not yet implemented (will subscribe to `/person_detected`)
+### PlantingMission internals
+1. **SeedDatabase** — `seeds.csv` columns: `name, spacing_x_mm, spacing_y_mm, depth_mm, tool_id, tool_param`
+2. **PlantingPlanner** — pure math; `get_seed_position(i)` / `get_robot_stop(i)`
+3. **GripperTool** — `pick()` closes, `release()` opens; tray coords from `tray_positions.yaml` (must be measured physically)
+4. **ExecutionEngine** — JTC only; `send_xy_command` / `send_z_command` are strict primitives (Z retracts before XY; two-point Z trajectory: 400ms velocity-damp settle then stroke, prevents cubic spline ghost movement on X/Y); `FlatGroundDepthSensor` active
 
 ### Registering a new mission
 ```cpp
-// At bottom of your_mission.cpp, inside namespace robot_missions:
-namespace robot_missions {
-REGISTER_MISSION("your_type", YourMission);
-}
-// Also #include your header in mission_server_node.cpp to force linker to include the TU
+// Bottom of your_mission.cpp:
+namespace robot_missions { REGISTER_MISSION("your_type", YourMission); }
+// Also #include the header in mission_server_node.cpp to force linker inclusion.
 ```
 
-### Known stubs / TODOs
-- `config/tray_positions.yaml` — all 0.0, measure physically
-- `navigate_to_start()` — always returns true (Nav2 integration future)
-- `DepthSensor` — nullptr, soil depth assumed flat
-- `SafetyChecker` — not implemented (camera-based person check before base movement)
-- VacuumTool — tool_id=2 in seeds.csv will error until implemented
+### Active stubs
+- `tray_positions.yaml` — tray coords are test values; measure physically before real run
+- `FlatGroundDepthSensor` — real sensor not mounted
+- `SafetyChecker` — not implemented (will subscribe `/person_detected`)
+- VacuumTool — tool_id=2 will error until implemented
 
-## Safety
+### Roadmap (see `MAP_ARCHITECTURE.md` §7)
+- **Step 5** — multi-zone / snake path: queue zones across strips, sequential goals
+- **Step 6** — `Nav2Navigator : NavigationProvider` (one file, one line swap in `mission_server_node.cpp`)
+- **Step 7** — RTK / absolute coordinates replacing odom frame
 
-`robot_vision/safety_monitor_node.py` subscribes to `/person_detected` (`Bool`). When `True`, publishes zero `TwistStamped` to `/diff_drive_controller/cmd_vel` at 20 Hz until person is gone.
-
-Future: `SafetyChecker` interface in `ExecutionEngine` will pause base movement during missions when `/person_detected` is True.
+---
 
 ## Web App
 
-Served at port 8000 (via `serve_webapp.py`), connects to rosbridge at `ws://<host>:9090`. Key topics published from browser:
-- `/diff_drive_controller/cmd_vel` (`TwistStamped`)
-- `/joint_trajectory_controller/joint_trajectory` (`JointTrajectory`)
-- `/gantry_velocity_controller/commands` (`Float64MultiArray`)
-- `/gripper/angle` (`Int32`)
+Port 8080, rosbridge at `ws://<host>:9090`.
 
-Speed limits are constants at the top of `webapp/app.js` (`BASE_MAX_SPEED_MS`, `GANTRY_MAX_SPEED_MS`).
+**`index.html` / `app.js`** — teleop: `/diff_drive_controller/cmd_vel`, `/joint_trajectory_controller/joint_trajectory`, `/gantry_velocity_controller/commands`, `/gripper/angle`. JTC trajectory time: `1.5 × dist / hw_cap` per axis (X=0.15, Y=0.06, Z=0.04 m/s).
+
+**`missions.html` / `missions.js` / `missions.css`** — field canvas map, zone planner (2-click placement, overlap validation, seed stats), zone list with ▶ Start / ■ Cancel per zone. Sends goals via `send_action_goal` rosbridge op; feedback via `socket.addEventListener`. HTTP API: `/api/field_config`, `/api/mission_zones`.
+
+**`nav.js`** — shared hamburger/drawer for both pages.
+
+---
+
+## Safety
+
+`robot_vision/safety_monitor_node.py` publishes zero `TwistStamped` to `/diff_drive_controller/cmd_vel` at 20 Hz while `/person_detected` is `True`. Future: `SafetyChecker` in `ExecutionEngine` will pause base movement.
+
+---
+
+## Known Operational Issues
+
+**ODESC wheels not on CAN** — `candump can0` shows no traffic from node IDs 5–8. Gantry (1–4) fine. Check CAN connector on ODESC boards.
+
+**X1 motor CAN reliability** — Intermittently missed CAN commands during homing; X1/X2 sync faults observed. Check CAN connector on X1 (ID=1), consider power-cycling.
+
+**autoDetectDirection() not implemented** — All 4 gantry motors default to `direction_multiplier_=1.0`; `0x90` query timing not resolved. Investigate before adding a 5th motor or replacing a motor.

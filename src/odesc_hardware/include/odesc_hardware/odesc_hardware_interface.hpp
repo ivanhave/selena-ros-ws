@@ -99,9 +99,6 @@ namespace odesc_hardware
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr voltage_left_pub_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr voltage_right_pub_;
     int voltage_tick_ = 0;
-
-    // Auto-recovery: re-enable nodes that fall out of CLOSED_LOOP
-    int recovery_tick_ = 0;
   };
 
 } // namespace odesc_hardware

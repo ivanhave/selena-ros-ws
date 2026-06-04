@@ -1,21 +1,8 @@
-# Selena Seed Database
-# Fields: name, spacing_x_mm, spacing_y_mm, depth_mm, tool_id, tool_param
-#
-# spacing_x_mm: spacing across robot travel direction (gantry X axis)
-# spacing_y_mm: spacing along robot travel direction  (gantry Y axis)
-# depth_mm:     planting depth below soil surface
-#               TODO: once depth sensor is integrated, this value is added on top
-#               of the measured soil distance. Current code assumes Z-home = soil level.
-# tool_id:      1=gripper, 2=vacuum (future)
-# tool_param:   tool-interpreted value:
-#               gripper (tool_id=1): grip angle in degrees (0=open, 55=fully closed)
-#               vacuum  (tool_id=2): suction hold time in ms (future)
-#
-# Add new seed types here. No code changes needed.
-
 name,spacing_x_mm,spacing_y_mm,depth_mm,tool_id,tool_param
-naut,  500, 250, 30, 1, 48
-pea,   200, 150, 25, 1, 43
-fasole,300, 200, 40, 1, 50
-tomato,400, 400, 10, 2, 300
-morcov,100, 100, 15, 2, 250
+naut,600,200,0,1,48
+pea,200,150,25,1,43
+fasole,300,200,40,1,50
+tomato,400,400,10,2,300
+morcov,100,100,15,2,250
+pepene,200,200,23,2,300
+jojo,250,100,20,1,20

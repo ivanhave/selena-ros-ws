@@ -12,11 +12,11 @@ GripperTool::GripperTool(rclcpp::Node::SharedPtr node)
         "/gripper/angle", 10);
 
     // Tray position — loaded from node params, set via tray_positions.yaml.
-    // All values default to 0.0 until physically measured and configured.
-    node_->declare_parameter("gripper_tray.gx",         0.0);
-    node_->declare_parameter("gripper_tray.gy",         0.0);
-    node_->declare_parameter("gripper_tray.z_approach", 0.0);
-    node_->declare_parameter("gripper_tray.z_pick",     0.0);
+    // Use has_parameter guard so re-creating GripperTool on the same node is safe.
+    if (!node_->has_parameter("gripper_tray.gx"))         node_->declare_parameter("gripper_tray.gx",         0.0);
+    if (!node_->has_parameter("gripper_tray.gy"))         node_->declare_parameter("gripper_tray.gy",         0.0);
+    if (!node_->has_parameter("gripper_tray.z_approach")) node_->declare_parameter("gripper_tray.z_approach", 0.0);
+    if (!node_->has_parameter("gripper_tray.z_pick"))     node_->declare_parameter("gripper_tray.z_pick",     0.0);
 
     tray_pose_.gx         = static_cast<float>(node_->get_parameter("gripper_tray.gx").as_double());
     tray_pose_.gy         = static_cast<float>(node_->get_parameter("gripper_tray.gy").as_double());

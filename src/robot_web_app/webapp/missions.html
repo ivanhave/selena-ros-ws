@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <title>Selena Robot — Missions</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="missions.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/roslibjs/1.1.0/roslib.min.js"></script>
+</head>
+<body>
+<div id="app">
+
+    <div id="header">
+        <button id="hamburger" aria-label="Menu">&#9776;</button>
+        <h1>Selena Robot</h1>
+        <div id="status">
+            <span id="connection-dot"></span>
+            <span id="connection-text">Disconnected</span>
+        </div>
+    </div>
+
+    <div id="mission-status-bar">
+        <span class="status-label">Mission:</span>
+        <span id="mission-status-text">None</span>
+    </div>
+
+    <!-- ── Field Configuration bar ── -->
+    <div class="mission-card mission-card--config" id="field-config-card">
+        <div class="mission-card-title">Field Configuration</div>
+        <div id="fc-inputs-row">
+            <div class="fc-group">
+                <label class="field-label" for="fc-strip-length">Strip<br>length (m)</label>
+                <input type="number" id="fc-strip-length" min="0.1" step="0.1" />
+            </div>
+            <div class="fc-group">
+                <label class="field-label" for="fc-strip-spacing">Strip<br>spacing (m)</label>
+                <input type="number" id="fc-strip-spacing" min="0.1" step="0.01" />
+            </div>
+            <div class="fc-group">
+                <label class="field-label" for="fc-strip-count">Strip<br>number</label>
+                <input type="number" id="fc-strip-count" min="1" step="1" />
+            </div>
+            <div class="fc-group">
+                <label class="field-label" for="fc-origin-x">Origin X (m)</label>
+                <input type="number" id="fc-origin-x" step="0.1" />
+            </div>
+            <div class="fc-group">
+                <label class="field-label" for="fc-origin-y">Origin Y (m)</label>
+                <input type="number" id="fc-origin-y" step="0.1" />
+            </div>
+            <div class="fc-group">
+                <label class="field-label" for="fc-origin-yaw">Yaw (°)</label>
+                <input type="number" id="fc-origin-yaw" step="1" />
+            </div>
+        </div>
+        <p id="fc-spacing-warning" class="form-error hidden"></p>
+        <div class="fc-actions">
+            <button class="btn-secondary" id="btn-fc-fit">Update View</button>
+            <span id="fc-save-status" class="fc-save-status"></span>
+        </div>
+    </div>
+
+    <div id="missions-main">
+
+        <!-- ── Map panel ── -->
+        <div id="map-panel">
+            <div id="map-toolbar">
+                <span id="map-title-label">Field Map</span>
+                <div id="zoom-controls">
+                    <button id="btn-zoom-out" title="Zoom out">−</button>
+                    <input type="range" id="zoom-slider" min="0" max="100" step="1" value="61" />
+                    <button id="btn-zoom-in" title="Zoom in">+</button>
+                    <button id="btn-zoom-fit" title="Fit field in view">⊞</button>
+                </div>
+            </div>
+            <canvas id="field-canvas"></canvas>
+            <div id="map-rotation-controls">
+                <button id="btn-rotate-ccw" title="Rotate strips 90° counter-clockwise">↺</button>
+                <button id="btn-rotate-cw"  title="Rotate strips 90° clockwise">↻</button>
+            </div>
+            <div id="odom-drift-warning" class="hidden">Odometry jump detected</div>
+        </div>
+
+        <!-- ── Sidebar ── -->
+        <div id="mission-sidebar">
+
+            <!-- Planting (zones + seed management + launch) -->
+            <div class="mission-card" id="mission-card-planting">
+                <div class="mission-card-title">Planting</div>
+
+                <!-- Zone planner tool -->
+                <span class="field-label">Create Planting Zones</span>
+                <div id="zp-instruction" class="zp-instruction">Click a strip on the map to place start</div>
+
+                <div id="zp-coords" class="hidden">
+                    <div class="zp-row">
+                        <span class="field-label">Strip</span>
+                        <span id="zp-strip-id" class="zp-value">—</span>
+                        <span class="field-label zp-label-gap">Start</span>
+                        <span id="zp-start" class="zp-value">—</span>
+                    </div>
+                    <div id="zp-end-row" class="zp-row hidden">
+                        <span class="field-label">End</span>
+                        <span id="zp-end" class="zp-value">—</span>
+                        <span class="field-label zp-label-gap">Length</span>
+                        <span id="zp-length" class="zp-value">—</span>
+                    </div>
+                </div>
+
+                <div id="zp-seed-row" class="hidden">
+                    <span class="field-label">Seed</span>
+                    <div class="custom-select" id="zp-seed-select-wrap">
+                        <button class="custom-select-trigger" id="zp-seed-trigger" type="button">
+                            <span id="zp-seed-label">—</span>
+                            <span class="custom-select-caret">▾</span>
+                        </button>
+                        <div class="custom-select-list hidden" id="zp-seed-list"></div>
+                    </div>
+                </div>
+
+                <div id="zp-stats" class="hidden"></div>
+
+                <div id="zp-overlap-error" class="form-error hidden">Overlaps an existing zone on this strip.</div>
+
+                <div class="fc-actions">
+                    <button class="btn-secondary" id="btn-zp-clear">Clear</button>
+                    <button class="btn-primary" id="btn-zp-add" disabled>Add Zone</button>
+                </div>
+
+                <!-- Zones list -->
+                <div class="zones-divider"></div>
+
+                <div id="zones-list">
+                    <span class="field-hint">No zones defined</span>
+                </div>
+
+                <!-- Seed section -->
+                <div class="zones-divider"></div>
+
+                <div class="seed-selector-wrap">
+                    <span class="field-label">Available Seed Types</span>
+                    <div class="custom-select" id="seed-select-wrap">
+                        <button class="custom-select-trigger" id="seed-select-trigger" type="button">
+                            <span id="seed-select-label">—</span>
+                            <span class="custom-select-caret">▾</span>
+                        </button>
+                        <div class="custom-select-list hidden" id="seed-select-list"></div>
+                    </div>
+                </div>
+
+                <div id="seed-specs"></div>
+
+                <div class="seed-actions">
+                    <button class="btn-secondary" id="btn-add-seed">+ Add</button>
+                    <button class="btn-secondary" id="btn-edit-seed">Edit</button>
+                    <button class="btn-secondary" id="btn-delete-seed">Delete</button>
+                </div>
+
+                <button id="btn-start-mission">Start Mission</button>
+            </div>
+
+            <!-- Secondary missions — grouped so they can flow beside each other below the map -->
+            <div id="mission-sidebar-secondary">
+
+                <!-- Weeding -->
+                <div class="mission-card mission-card--disabled" id="mission-card-weeding">
+                    <div class="mission-card-title">Weeding</div>
+                    <div class="mission-coming-soon-overlay">Coming Soon</div>
+                </div>
+
+                <!-- Watering -->
+                <div class="mission-card mission-card--disabled" id="mission-card-watering">
+                    <div class="mission-card-title">Watering</div>
+                    <div class="mission-coming-soon-overlay">Coming Soon</div>
+                </div>
+
+            </div><!-- /mission-sidebar-secondary -->
+
+        </div><!-- /mission-sidebar -->
+
+    </div><!-- /missions-main -->
+
+    <div id="footer">Engineering for a Better World</div>
+
+</div>
+
+<!-- Nav drawer -->
+<div id="nav-overlay"></div>
+<nav id="nav-drawer">
+    <a href="index.html">Control</a>
+    <a href="missions.html" class="nav-active">Missions</a>
+</nav>
+
+<!-- Modals -->
+<div id="modal-overlay" class="modal-overlay hidden">
+
+    <div id="modal-cancel-confirm" class="modal hidden">
+        <div class="modal-title">Cancel Mission</div>
+        <div class="modal-body" id="modal-cancel-text">Are you sure you want to cancel the current mission?</div>
+        <div class="modal-actions">
+            <button class="btn-secondary" id="btn-cancel-no">No, Keep Running</button>
+            <button class="btn-primary" id="btn-cancel-yes">Yes, Cancel</button>
+        </div>
+    </div>
+
+    <div id="modal-seed-form" class="modal hidden">
+        <div class="modal-title" id="modal-seed-form-title">Add Seed</div>
+        <form class="modal-form" id="seed-form" action="javascript:void(0)">
+            <div class="form-group">
+                <label class="field-label" for="form-name">Name</label>
+                <input type="text" id="form-name" placeholder="e.g. pea" autocomplete="off" />
+            </div>
+            <div class="form-group">
+                <label class="field-label" for="form-spacing-x">Spacing X (mm)</label>
+                <input type="number" id="form-spacing-x" min="1" step="1" placeholder="200" />
+            </div>
+            <div class="form-group">
+                <label class="field-label" for="form-spacing-y">Spacing Y (mm)</label>
+                <input type="number" id="form-spacing-y" min="1" step="1" placeholder="150" />
+            </div>
+            <div class="form-group">
+                <label class="field-label" for="form-depth">Depth (mm)</label>
+                <input type="number" id="form-depth" min="0" step="1" placeholder="25" />
+            </div>
+            <div class="form-group">
+                <label class="field-label" for="form-tool-id">Tool</label>
+                <select id="form-tool-id">
+                    <option value="1">1 — Gripper</option>
+                    <option value="2">2 — Vacuum (not yet implemented)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="field-label" for="form-tool-param">Tool Param</label>
+                <input type="number" id="form-tool-param" min="0" step="1" placeholder="43" />
+                <span class="form-hint">Gripper: grip angle 0–55° &nbsp;·&nbsp; Vacuum: hold time (ms)</span>
+            </div>
+            <p class="form-error hidden" id="seed-form-error"></p>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" id="btn-seed-form-cancel">Cancel</button>
+                <button type="submit" class="btn-primary">Save</button>
+            </div>
+        </form>
+    </div>
+
+    <div id="modal-delete-confirm" class="modal hidden">
+        <div class="modal-title" id="modal-delete-title">Delete</div>
+        <div class="modal-body" id="modal-delete-text"></div>
+        <div class="modal-actions">
+            <button class="btn-secondary" id="btn-delete-cancel">Cancel</button>
+            <button class="btn-primary" id="btn-delete-confirm">Delete</button>
+        </div>
+    </div>
+
+    <div id="modal-inprogress-lock" class="modal hidden">
+        <div class="modal-title">Field Configuration Locked</div>
+        <div class="modal-body">A mission is currently in progress. Complete or abort it before changing the field configuration.</div>
+        <div class="modal-actions">
+            <button class="btn-primary" id="btn-inprogress-ok">OK</button>
+        </div>
+    </div>
+
+    <div id="modal-zones-wiped" class="modal hidden">
+        <div class="modal-title">Planned Zones Removed</div>
+        <div class="modal-body" id="modal-zones-wiped-text"></div>
+        <div class="modal-actions">
+            <button class="btn-primary" id="btn-zones-wiped-ok">OK</button>
+        </div>
+    </div>
+
+</div>
+
+<script src="nav.js"></script>
+<script src="missions.js"></script>
+<script src="missions.map.js"></script>
+<script src="missions.zones.js"></script>
+<script src="missions.field.js"></script>
+<script src="missions.ros.js"></script>
+<script src="missions.seeds.js"></script>
+</body>
+</html>

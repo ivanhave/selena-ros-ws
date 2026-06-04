@@ -1,19 +1,23 @@
 #include <memory>
 #include <thread>
 #include <mutex>
+#include <atomic>
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
+#include "controller_manager_msgs/srv/list_controllers.hpp"
 #include "robot_missions/mission_manager.hpp"
 #include "robot_missions/mission_base.hpp"
 #include "robot_missions/action/mission_action.hpp"
+#include "robot_navigation/odometry_navigator.hpp"
 
 // Force-include planting registration so the static initializer fires
 // and PlantingMission self-registers with MissionRegistry.
 // Without this the linker may dead-strip the translation unit.
 #include "robot_missions/planting/planting_mission.hpp"
 
-using MissionAction = robot_missions::action::MissionAction;
-using GoalHandle    = rclcpp_action::ServerGoalHandle<MissionAction>;
+using MissionAction  = robot_missions::action::MissionAction;
+using GoalHandle     = rclcpp_action::ServerGoalHandle<MissionAction>;
+using ListControllers = controller_manager_msgs::srv::ListControllers;
 
 // ── MissionServer ─────────────────────────────────────────────────────────────
 
@@ -22,7 +26,7 @@ class MissionServer
 public:
     explicit MissionServer(rclcpp::Node::SharedPtr node)
     : node_(node)
-    , manager_(node)
+    , manager_(node, std::make_shared<robot_navigation::OdometryNavigator>(node))
     {
         action_server_ = rclcpp_action::create_server<MissionAction>(
             node_,
@@ -41,6 +45,61 @@ public:
     }
 
 private:
+    // ── Initialization guard ──────────────────────────────────────────────────
+    //
+    // Blocks the execute_mission thread until joint_trajectory_controller is
+    // active in the controller_manager. JTC only becomes active after gantry
+    // homing completes (enforced by --controller-manager-timeout 120 in the
+    // spawner). This guarantees no goal can disturb homing.
+    //
+    // Returns true when ready to execute, false if the goal was cancelled
+    // while waiting (caller must settle the goal handle).
+    bool wait_for_robot_ready(const std::shared_ptr<GoalHandle> & goal_handle)
+    {
+        auto client = node_->create_client<ListControllers>(
+            "/controller_manager/list_controllers");
+
+        RCLCPP_INFO(node_->get_logger(),
+            "Goal received — waiting for robot initialization before executing...");
+
+        while (rclcpp::ok()) {
+            if (goal_handle->is_canceling()) return false;
+
+            // controller_manager not up yet — keep waiting
+            if (!client->wait_for_service(std::chrono::seconds(1))) {
+                waiting_for_init_ = true;
+                continue;
+            }
+
+            auto req    = std::make_shared<ListControllers::Request>();
+            auto future = client->async_send_request(req);
+
+            if (future.wait_for(std::chrono::seconds(2)) != std::future_status::ready) {
+                waiting_for_init_ = true;
+                continue;
+            }
+
+            // Store the SharedPtr — future.get() moves the value out of the future,
+            // so the temporary would be destroyed before the range-for completes.
+            auto response = future.get();
+            for (const auto & ctrl : response->controller) {
+                if (ctrl.name == "joint_trajectory_controller" && ctrl.state == "active") {
+                    waiting_for_init_ = false;
+                    RCLCPP_INFO(node_->get_logger(), "Robot ready — starting mission.");
+                    return true;
+                }
+            }
+
+            waiting_for_init_ = true;
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+
+        waiting_for_init_ = false;
+        return false;
+    }
+
+    // ── Action callbacks ──────────────────────────────────────────────────────
+
     rclcpp_action::GoalResponse handle_goal(
         const rclcpp_action::GoalUUID & /*uuid*/,
         std::shared_ptr<const MissionAction::Goal> goal)
@@ -54,6 +113,7 @@ private:
         const std::shared_ptr<GoalHandle> /*goal_handle*/)
     {
         RCLCPP_INFO(node_->get_logger(), "Cancel requested — aborting mission.");
+        waiting_for_init_ = false;
         manager_.abort();
         return rclcpp_action::CancelResponse::ACCEPT;
     }
@@ -67,6 +127,31 @@ private:
 
     void execute_mission(const std::shared_ptr<GoalHandle> goal_handle)
     {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            active_goal_ = goal_handle;
+        }
+
+        // Block until homing is done. If the user cancels while waiting,
+        // settle the goal and return without touching any hardware.
+        if (!wait_for_robot_ready(goal_handle)) {
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                active_goal_.reset();
+            }
+            auto result = std::make_shared<MissionAction::Result>();
+            result->success          = false;
+            result->report           = "Cancelled while waiting for robot initialization.";
+            result->items_completed  = 0;
+            result->distance_covered = 0.0f;
+            if (goal_handle->is_canceling()) {
+                goal_handle->canceled(result);
+            } else {
+                goal_handle->abort(result);
+            }
+            return;
+        }
+
         auto goal = goal_handle->get_goal();
 
         robot_missions::MissionCommand cmd;
@@ -76,11 +161,7 @@ private:
         cmd.quantity_unit = goal->quantity_unit;
         cmd.start_x       = goal->start_x;
         cmd.start_y       = goal->start_y;
-
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            active_goal_ = goal_handle;
-        }
+        cmd.start_yaw     = goal->start_yaw;
 
         robot_missions::MissionResult result = manager_.run(cmd);
 
@@ -101,6 +182,11 @@ private:
             } else {
                 goal_handle->abort(action_result);
             }
+        } else if (goal_handle->is_canceling()) {
+            // Cancel was accepted while the mission was running.
+            // The mission finished the current seed then stopped.
+            // Report partial results back so the web app can update the zone.
+            goal_handle->canceled(action_result);
         }
     }
 
@@ -114,11 +200,14 @@ private:
         if (!goal_handle || !goal_handle->is_active()) return;
 
         auto feedback = std::make_shared<MissionAction::Feedback>();
-        feedback->progress_percent       = manager_.get_progress();
-        feedback->current_step           = manager_.get_current_step();
+        feedback->progress_percent       = manager_.get_progress() * 100.0f;
+        feedback->current_step           = waiting_for_init_
+                                               ? "waiting for robot init"
+                                               : manager_.get_current_step();
         feedback->items_completed_so_far = 0;
-        feedback->current_robot_x        = 0.0f;
-        feedback->current_robot_y        = 0.0f;
+        auto pose = manager_.get_robot_pose();
+        feedback->current_robot_x        = pose.x;
+        feedback->current_robot_y        = pose.y;
 
         goal_handle->publish_feedback(feedback);
     }
@@ -129,6 +218,7 @@ private:
     rclcpp::TimerBase::SharedPtr                    feedback_timer_;
     std::shared_ptr<GoalHandle>                     active_goal_;
     std::mutex                                      mutex_;
+    std::atomic<bool>                               waiting_for_init_ {false};
 };
 
 // ── main ──────────────────────────────────────────────────────────────────────

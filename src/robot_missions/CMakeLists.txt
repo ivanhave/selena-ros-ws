@@ -15,6 +15,11 @@ find_package(nav_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(trajectory_msgs REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
+find_package(robot_navigation REQUIRED)
+find_package(yaml_cpp_vendor REQUIRED)
+find_package(yaml-cpp REQUIRED)
+find_package(robot_description REQUIRED)
+find_package(controller_manager_msgs REQUIRED)
 
 # ── Action interfaces ──────────────────────────────────────────────────────────
 rosidl_generate_interfaces(${PROJECT_NAME}
@@ -47,11 +52,14 @@ ament_target_dependencies(${PROJECT_NAME}_lib
   nav_msgs
   sensor_msgs
   trajectory_msgs
+  robot_navigation
+  yaml_cpp_vendor
+  robot_description
 )
 
-# Link generated action typesupport into the library
+# Link generated action typesupport and yaml-cpp into the library
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} rosidl_typesupport_cpp)
-target_link_libraries(${PROJECT_NAME}_lib ${cpp_typesupport_target})
+target_link_libraries(${PROJECT_NAME}_lib ${cpp_typesupport_target} yaml-cpp::yaml-cpp)
 
 # ── Executable — mission action server ────────────────────────────────────────
 add_executable(mission_server src/mission_server_node.cpp)
@@ -66,6 +74,7 @@ ament_target_dependencies(mission_server
   ament_index_cpp
   rclcpp
   rclcpp_action
+  controller_manager_msgs
 )
 
 # ── Install ────────────────────────────────────────────────────────────────────
@@ -96,5 +105,16 @@ install(
   FILES ARCHITECTURE.md
   DESTINATION share/${PROJECT_NAME}
 )
+
+# ── Tests ─────────────────────────────────────────────────────────────────────
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(planting_planner_test test/planting_planner_test.cpp)
+  target_include_directories(planting_planner_test PRIVATE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  )
+  target_link_libraries(planting_planner_test ${PROJECT_NAME}_lib)
+  ament_target_dependencies(planting_planner_test rclcpp)
+endif()
 
 ament_package()

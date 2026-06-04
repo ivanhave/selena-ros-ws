@@ -1,5 +1,11 @@
 <!-- ros2 launch robot_bringup robot.launch.xml -->
 <launch>
+    <!-- Kill any surviving ros2_control_node from a crashed/aborted session.
+         A zombie node keeps JTC alive with stale desired positions: after homing
+         resets encoders to 0, JTC immediately drives the gantry back to wherever
+         it was commanded last session. -->
+    <executable cmd="bash -c 'pkill -9 -f ros2_control_node; true'" shell="true" />
+
     <let name="urdf_path"
         value="$(find-pkg-share robot_description)/urdf/selena_robot.urdf.xacro" />
     <let name="robot_description"
@@ -19,29 +25,40 @@
         <param from="$(find-pkg-share robot_bringup)/config/robot_controllers.yaml" />
     </node>
 
-    <!-- State broadcaster — publishes all joint states -->
+    <!-- These controllers carry no per-session position state — spawn immediately. -->
     <node pkg="controller_manager"
         exec="spawner"
         args="joint_state_broadcaster" />
 
-    <!-- Gantry trajectory controller -->
-    <node pkg="controller_manager"
-        exec="spawner"
-        args="joint_trajectory_controller" />
-
-    <!-- Mobile base diff drive controller -->
     <node pkg="controller_manager"
         exec="spawner"
         args="diff_drive_controller" />
 
-    <!-- Gantry velocity controller — inactive by default, activated for manual teleop -->
+    <!-- Inactive by default — activated for manual teleop -->
     <node pkg="controller_manager"
         exec="spawner"
         args="gantry_velocity_controller --inactive" />
 
-    <!-- Gripper interface node -->
     <node pkg="robot_gripper"
         exec="gripper_interface_node"
         name="gripper_interface_node"
         output="screen" />
+
+    <!-- JTC uses controller-manager-timeout 120 so the spawner waits up to 120 s
+         for controller_manager services. Those services only start AFTER hardware
+         activation (i.e. after homing completes), so JTC always initialises from
+         position 0 (home) and never replays a stale desired position. -->
+    
+    <node pkg="controller_manager"
+        exec="spawner"
+        args="joint_trajectory_controller --controller-manager-timeout 120" />
+
+    <node pkg="robot_missions"
+        exec="mission_server"
+        name="mission_server"
+        output="screen">
+        <param from="$(find-pkg-share robot_missions)/config/tray_positions.yaml" />
+    </node>
+
+    <include file="$(find-pkg-share robot_web_app)/launch/teleop.launch.xml" />
 </launch>

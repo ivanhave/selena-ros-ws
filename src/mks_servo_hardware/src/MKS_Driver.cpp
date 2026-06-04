@@ -121,6 +121,16 @@ bool MKSDriver::recover()
     return init();  // re-open socket and restart listener
 }
 
+void MKSDriver::clearOfflineFlag()
+{
+    motor_offline_.store(false);
+    // Erase stale 0x32 entry so nudgeIfStale immediately requests fresh velocity data.
+    // Without this, checkMotorOnline would see >400ms-old data and re-set offline on
+    // the very next listener iteration.
+    std::lock_guard<std::mutex> lock(board_mutex_);
+    status_board_.erase(0x32);
+}
+
 // --- MODE ACTIVATION ---
 
 void MKSDriver::activateAbsolutePositionMode()
@@ -128,10 +138,13 @@ void MKSDriver::activateAbsolutePositionMode()
     if (isStalled())
         releaseStall(); // Only release if actually stalled
 
-    uint8_t data[6] = {0, 0, 0, 0, 0, 0};
-    send_mks_frame(motor_can_id_, 0xF5, data, 6);
-    listening_running_ = true;
+    // Send velocity=0 to take the motor out of E-stop/disabled state before homing.
+    // Using 0xF6 (velocity mode, zero speed) rather than 0xF5 avoids creating a stale
+    // position command that the firmware would resume after homing finishes.
+    uint8_t data[3] = {0, 0, 0};
+    send_mks_frame(motor_can_id_, 0xF6, data, 3);
 
+    listening_running_ = true;
     std::cout << "MKS_Driver: Absolute Position Mode activated." << std::endl;
 }
 
@@ -168,7 +181,8 @@ void MKSDriver::deactivate()
 
 void MKSDriver::setTargetPositionAbsoluteRadian(double pos_rad, double vel_rad_s, uint8_t acc)
 {
-    int32_t absolute_steps = static_cast<int32_t>(pos_rad * direction_multiplier_ * RAD_TO_STEPS);
+    int32_t absolute_steps = static_cast<int32_t>(pos_rad * direction_multiplier_ * RAD_TO_STEPS)
+                           + static_cast<int32_t>(pos_home_offset_steps_);
 
     uint16_t speed_rpm = static_cast<uint16_t>(std::abs(vel_rad_s * RAD_TO_RPM));
     if (speed_rpm > 3000) speed_rpm = 3000;
@@ -223,7 +237,13 @@ double MKSDriver::getPositionRadian()
             if (raw_value & 0x0000800000000000)
                 raw_value |= 0xFFFF000000000000;
 
-            last_valid_pos_ = (static_cast<double>(raw_value) / RAD_TO_STEPS) * direction_multiplier_;
+            // Sanity check: discard CAN frames whose step count implies travel
+            // greater than 500 rad from home (all physical axes are under 250 rad).
+            // Corrupt frames can produce values in the billions of radians.
+            const int64_t displacement = raw_value - pos_home_offset_steps_;
+            const int64_t MAX_STEPS = static_cast<int64_t>(500.0 * RAD_TO_STEPS);
+            if (std::abs(displacement) <= MAX_STEPS)
+                last_valid_pos_ = (displacement / RAD_TO_STEPS) * direction_multiplier_;
         }
     }
     return last_valid_pos_;
@@ -247,6 +267,13 @@ double MKSDriver::getVelocityRadianPerSec()
 
 // --- SPECIFIC COMMANDS ---
 
+void MKSDriver::startHoming()
+{
+    send_mks_frame(motor_can_id_, 0x91, nullptr, 0);
+    std::cout << "MKS_Driver: ID " << (int)motor_can_id_
+              << " homing triggered (non-blocking)." << std::endl;
+}
+
 bool MKSDriver::goHome()
 {
     send_mks_frame(motor_can_id_, 0x91, nullptr, 0);
@@ -256,6 +283,7 @@ bool MKSDriver::goHome()
     std::this_thread::sleep_for(std::chrono::milliseconds(800));
 
     int stationary_count = 0;
+    bool any_motion = false;
     auto start = std::chrono::steady_clock::now();
 
     while (true)
@@ -276,6 +304,13 @@ bool MKSDriver::goHome()
             stationary_count++;
             if (stationary_count >= 10)
             {
+                if (!any_motion)
+                {
+                    // Motor never exceeded stationary threshold — likely already at home.
+                    std::cerr << "MKS_Driver: ID " << (int)motor_can_id_
+                              << " homing WARN: motor never moved — may already be at home."
+                              << std::endl;
+                }
                 std::cout << "MKS_Driver: ID " << (int)motor_can_id_
                           << " reached home and stopped." << std::endl;
                 return true;
@@ -284,8 +319,54 @@ bool MKSDriver::goHome()
         else
         {
             stationary_count = 0;
+            any_motion = true;
         }
     }
+}
+
+void MKSDriver::zeroPositionAtHome()
+{
+    // During 0x91 homing the motor stops responding to all queries, so the last 0x31
+    // frame in status_board_ may be seconds old and will fail the freshness check.
+    // Actively nudge the motor before each retry so the listener gets a fresh response.
+    std::vector<uint8_t> raw;
+    for (int attempt = 0; attempt < 10; ++attempt)
+    {
+        send_mks_frame(motor_can_id_, 0x31, nullptr, 0);  // request position
+        std::this_thread::sleep_for(std::chrono::milliseconds(80));
+        if (getRecentData(0x31, raw, 70))  // 70 ms freshness — covers the 80 ms send+reply
+            break;
+        raw.clear();
+    }
+
+    if (raw.size() >= 7)
+    {
+        int64_t raw_value = 0;
+        for (int i = 1; i <= 6; ++i)
+            raw_value = (raw_value << 8) | raw[i];
+        if (raw_value & 0x0000800000000000)
+            raw_value |= 0xFFFF000000000000;
+        pos_home_offset_steps_ = raw_value;
+    }
+    last_valid_pos_ = 0.0;
+
+    // Hold the motor at the home step with a proper 0xF5 command (non-zero speed so
+    // the firmware doesn't fall back to any cached speed from a previous command).
+    {
+        int32_t steps = static_cast<int32_t>(pos_home_offset_steps_);
+        uint16_t speed_rpm = 50;  // minimum speed — explicitly overrides any stale command
+        uint8_t data[6];
+        data[0] = (speed_rpm >> 8) & 0xFF;
+        data[1] =  speed_rpm       & 0xFF;
+        data[2] = 0;                          // acc
+        data[3] = (steps >> 16) & 0xFF;
+        data[4] = (steps >> 8)  & 0xFF;
+        data[5] =  steps        & 0xFF;
+        send_mks_frame(motor_can_id_, 0xF5, data, 6);
+    }
+
+    std::cout << "MKS_Driver: ID " << (int)motor_can_id_
+              << " position zeroed at home (offset=" << pos_home_offset_steps_ << " steps)." << std::endl;
 }
 
 // --- STALL PROTECTION ---
@@ -346,6 +427,13 @@ bool MKSDriver::releaseStall()
         return true;
     }
 
+    // Timed out — clear the cached stall flag anyway.
+    // The motor may have acted on the 0x3D without sending an ack (CAN glitch).
+    // Leaving the flag set would cause false stall detections in read().
+    {
+        std::lock_guard<std::mutex> lock(board_mutex_);
+        status_board_.erase(0x3E);
+    }
     std::cerr << "MKS_Driver: releaseStall() timeout on ID "
               << (int)motor_can_id_ << std::endl;
     return false;

@@ -11,6 +11,7 @@
 <body>
 <div id="app">
     <div id="header">
+        <button id="hamburger" aria-label="Menu">&#9776;</button>
         <h1>Selena Robot</h1>
         <div id="status">
             <span id="connection-dot"></span>
@@ -79,6 +80,9 @@
                 <span class="info-label">🔋 right wheels</span>
                 <input class="val-box no-interact no-interact-js" id="voltage-right" readonly tabindex="-1" />
                 <span class="info-unit">V</span>
+                <span class="info-label">🔋 gantry</span>
+                <input class="val-box no-interact no-interact-js" id="voltage-gantry" readonly tabindex="-1" />
+                <span class="info-unit">V</span>
             </div>
             <div id="gantry-pos-box" class="info-box">
                 <span class="info-label">X axis</span>
@@ -121,6 +125,14 @@
         Engineering for a Better World
     </div>
 </div>
+
+<div id="nav-overlay"></div>
+<nav id="nav-drawer">
+    <a href="index.html" class="nav-active">Control</a>
+    <a href="missions.html">Missions</a>
+</nav>
+
+<script src="nav.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

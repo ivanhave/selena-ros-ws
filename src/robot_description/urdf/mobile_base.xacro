@@ -23,6 +23,7 @@
     <xacro:property name="z_axis_travel" value="0.25" />
 
     <xacro:property name="wheel_radius" value="0.0825" />
+    <xacro:property name="wheel_width"  value="0.10"   />   <!-- tread width in Y (axle direction) -->
 
 
     ``----- LINKS -----

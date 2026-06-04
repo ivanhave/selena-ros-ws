@@ -2,6 +2,8 @@
 
 #include <string>
 #include <cstdint>
+#include <vector>
+#include "robot_navigation/navigation_provider.hpp"
 
 namespace robot_missions
 {
@@ -19,6 +21,7 @@ struct MissionCommand
     std::string quantity_unit;  // "meters", "seeds", "liters"
     float       start_x;        // world X coordinate (odometry/RTK)
     float       start_y;        // world Y coordinate
+    float       start_yaw;      // world heading in radians (0 = robot faces +X)
 };
 
 // ── MissionResult ────────────────────────────────────────────────────────────
@@ -78,6 +81,13 @@ public:
 
     // Human readable current step description
     virtual std::string get_current_step() = 0;
+
+    // All robot base stop positions in world frame, for path visualisation.
+    // Called after plan(). Default returns empty (missions that don't move the base).
+    // start_x/y/yaw = the world pose the robot arrived at before execute().
+    virtual std::vector<robot_navigation::Pose2D> get_route_waypoints(
+        float /*start_x*/, float /*start_y*/, float /*start_yaw*/) const
+    { return {}; }
 };
 
 } // namespace robot_missions

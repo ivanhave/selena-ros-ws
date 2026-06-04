@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>robot_field</name>
+  <version>0.1.0</version>
+  <description>
+    Field layout configuration for Selena robot.
+    Single source of truth for strip positions, dimensions, and mission zones.
+    Read by the web app (via HTTP endpoints) and future navigation nodes.
+  </description>
+  <maintainer email="ivanrabei@gmail.com">Ivan</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+
+</package>

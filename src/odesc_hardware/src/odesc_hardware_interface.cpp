@@ -197,6 +197,10 @@ hardware_interface::return_type OdescHardwareInterface::read(
   driver_->request_states();
   can_->spin_once();
 
+  // Auto-recover any axis that has dropped out of CLOSED_LOOP_CONTROL.
+  // check_and_recover() is rate-limited internally (2 s cooldown per axis).
+  driver_->check_and_recover();
+
   for (size_t i = 0; i < axis_configs_.size(); i++) {
     hw_positions_[i]  = driver_->get_position(i);
     hw_velocities_[i] = driver_->get_velocity(i);

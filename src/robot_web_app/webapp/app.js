@@ -30,6 +30,14 @@ function mStr(v) {
 }
 
 // ══════════════════════════════════════════════════════════
+// CLIENT IDENTITY & CONTROL LOCK
+// ══════════════════════════════════════════════════════════
+
+const CLIENT_ID = Math.random().toString(36).slice(2, 10);
+let hasControl = false;
+let controlLockOwner = '';
+
+// ══════════════════════════════════════════════════════════
 // ROS
 // ══════════════════════════════════════════════════════════
 
@@ -42,14 +50,13 @@ ros.on('connection', () => {
     dot.classList.add('connected');
     txt.textContent = 'Connected';
     reconnectDelay = 3000;
-    // Ensure hardware is in JTC/position mode on every connect.
-    // BEST_EFFORT: no-op if JTC is already active; corrects spawner-race inversion.
-    if (!manualMode) {
+    // Fix spawner-race: ensure JTC active on connect, but only when no client holds the lock.
+    if (!controlLockOwner) {
         switchControllerService.callService(
             new ROSLIB.ServiceRequest({
                 activate_controllers: ['joint_trajectory_controller'],
                 deactivate_controllers: ['gantry_velocity_controller'],
-                strictness: 2
+                strictness: 1
             }),
             () => {}
         );
@@ -98,6 +105,51 @@ const gripperCurrentAngleSub = new ROSLIB.Topic({
     messageType: 'std_msgs/Int32'
 });
 
+// ── Control lock — shared between all connected clients ───
+const controlLockTopic = new ROSLIB.Topic({
+    ros, name: '/webapp/control_lock',
+    messageType: 'std_msgs/String'
+});
+controlLockTopic.subscribe((msg) => {
+    controlLockOwner = msg.data;
+    hasControl = (msg.data === CLIENT_ID);
+    updateToggleState();
+});
+
+// ── Mission status — blocks manual mode while a mission is running ──
+const missionStatusSub = new ROSLIB.Topic({
+    ros, name: '/mission/_action/status',
+    messageType: 'action_msgs/GoalStatusArray'
+});
+missionStatusSub.subscribe((msg) => {
+    // status 1=ACCEPTED 2=EXECUTING 3=CANCELING mean active
+    const nowActive = msg.status_list.some(s => s.status >= 1 && s.status <= 3);
+    if (nowActive === missionActive) return;
+    missionActive = nowActive;
+    if (missionActive && manualMode) setManualMode(false);
+    updateToggleState();
+    updateGantryBoxInteractivity();
+});
+
+function updateToggleState() {
+    if (missionActive) {
+        toggleWrap.classList.remove('active', 'locked');
+        toggleWrap.classList.add('mission-active');
+        manualLabel.textContent = 'manual mode: mission active';
+    } else if (!controlLockOwner) {
+        toggleWrap.classList.remove('active', 'locked', 'mission-active');
+        manualLabel.textContent = 'manual mode: off';
+    } else if (hasControl) {
+        toggleWrap.classList.add('active');
+        toggleWrap.classList.remove('locked', 'mission-active');
+        manualLabel.textContent = 'manual mode: on';
+    } else {
+        toggleWrap.classList.remove('active', 'mission-active');
+        toggleWrap.classList.add('locked');
+        manualLabel.textContent = 'manual mode: locked';
+    }
+}
+
 // ── Voltage subscriptions ─────────────────────────────────
 const voltageSubs = [
     ['voltage_left',  'voltage-left'],
@@ -117,6 +169,7 @@ const voltageSubs = [
 // ══════════════════════════════════════════════════════════
 
 let manualMode = false;
+let missionActive = false;
 const manualLabel = document.getElementById('manual-label');
 const toggleWrap = document.getElementById('manual-toggle-wrap');
 const panels = document.querySelectorAll('.panel');
@@ -129,12 +182,36 @@ _gripperBoxInit.setAttribute('readonly', '');
 _gripperBoxInit.setAttribute('tabindex', '-1');
 _gripperBoxInit.classList.add('no-interact');
 
-function setManualMode(enabled) {
-    manualMode = enabled;
-    manualLabel.textContent = 'manual mode: ' + (enabled ? 'on' : 'off');
+function updateGantryBoxInteractivity() {
+    const editable = !manualMode && !missionActive;
+    ['gantry-x-val', 'gantry-y-val', 'gantry-z-val'].forEach(id => {
+        const el = document.getElementById(id);
+        if (editable) {
+            el.removeAttribute('readonly');
+            el.removeAttribute('tabindex');
+            el.classList.remove('no-interact');
+        } else {
+            el.setAttribute('readonly', '');
+            el.setAttribute('tabindex', '-1');
+            el.classList.add('no-interact');
+        }
+    });
+}
 
-    if (enabled) toggleWrap.classList.add('active');
-    else toggleWrap.classList.remove('active');
+function setManualMode(enabled) {
+    if (enabled) {
+        if (controlLockOwner && controlLockOwner !== CLIENT_ID) return; // blocked
+        hasControl = true;
+        controlLockOwner = CLIENT_ID;
+        controlLockTopic.publish(new ROSLIB.Message({ data: CLIENT_ID }));
+    } else if (hasControl) {
+        hasControl = false;
+        controlLockOwner = '';
+        controlLockTopic.publish(new ROSLIB.Message({ data: '' }));
+    }
+    updateToggleState();
+
+    manualMode = enabled;
 
     panels.forEach(p => {
         if (enabled) p.classList.remove('disabled');
@@ -154,22 +231,17 @@ function setManualMode(enabled) {
             deactivate_controllers: deactivate,
             strictness: 2
         }),
-        (result) => { console.log('Controller switch:', result.ok ? 'OK' : 'FAILED'); }
+        (result) => {
+            const ok = result && result.ok;
+            console.log('Controller switch:', ok ? 'OK' : 'FAILED');
+            if (!enabled && ok) {
+                sendGantryPosition(currentX, currentY, currentZ);
+            }
+        }
     );
 
-    // Gantry position boxes: editable in JTC mode only
-    ['gantry-x-val', 'gantry-y-val', 'gantry-z-val'].forEach(id => {
-        const el = document.getElementById(id);
-        if (enabled) {
-            el.setAttribute('readonly', '');
-            el.setAttribute('tabindex', '-1');
-            el.classList.add('no-interact');
-        } else {
-            el.removeAttribute('readonly');
-            el.removeAttribute('tabindex');
-            el.classList.remove('no-interact');
-        }
-    });
+    // Gantry position boxes: editable in JTC mode only (and never during a mission)
+    updateGantryBoxInteractivity();
 
     // Gripper box: readonly when manual mode is off (JTC mode — user can't drive gripper here)
     const gripperBox = document.getElementById('gripper-deg-val');
@@ -197,11 +269,11 @@ toggleWrap.addEventListener('touchstart', (e) => {
 }, { passive: true });
 toggleWrap.addEventListener('touchend', (e) => {
     e.stopPropagation();
-    setManualMode(!manualMode);
+    if (!missionActive) setManualMode(!manualMode);
 }, { passive: true });
 toggleWrap.addEventListener('click', () => {
     if (toggleTouched) { toggleTouched = false; return; }
-    setManualMode(!manualMode);
+    if (!missionActive) setManualMode(!manualMode);
 });
 
 // ══════════════════════════════════════════════════════════
@@ -351,7 +423,7 @@ let baseLinear = 0.0, baseAngular = 0.0;
 let baseJoystick = null;
 
 setInterval(() => {
-    if (!manualMode) return;
+    if (!manualMode || !hasControl) return;
     const now = Date.now();
     cmdVelTopic.publish(new ROSLIB.Message({
         header: {
@@ -428,12 +500,20 @@ odomSub.subscribe((msg) => {
     document.getElementById('odom-phi-val').value = (Math.abs(yaw) < 0.005 ? 0 : yaw * 180 / Math.PI).toFixed(1);
 });
 
+// Hardware velocity caps (must match gantry_hardware_interface.hpp)
+const X_HW_CAP = 0.15, Y_HW_CAP = 0.06, Z_HW_CAP = 0.04;
+
 function sendGantryPosition(x, y, z) {
     x = Math.max(X_MIN, Math.min(X_MAX, x));
     y = Math.max(Y_MIN, Math.min(Y_MAX, y));
     z = Math.max(Z_MIN, Math.min(Z_MAX, z));
-    const maxDist = Math.max(Math.abs(x - currentX), Math.abs(y - currentY), Math.abs(z - currentZ));
-    const secs = Math.max(0.5, maxDist / GANTRY_MAX_SPEED_MS);
+    // Cubic spline peak velocity = 1.5 × (distance / time).
+    // Set time so peak ≤ each axis hardware cap → smooth deceleration to target.
+    const secs = Math.max(0.5,
+        1.5 * Math.abs(x - currentX) / X_HW_CAP,
+        1.5 * Math.abs(y - currentY) / Y_HW_CAP,
+        1.5 * Math.abs(z - currentZ) / Z_HW_CAP
+    );
     const now = Date.now();
     jointTrajTopic.publish(new ROSLIB.Message({
         header: {
@@ -462,7 +542,7 @@ function sendGantryPosition(x, y, z) {
                     new ROSLIB.ServiceRequest({
                         activate_controllers: ['joint_trajectory_controller'],
                         deactivate_controllers: ['gantry_velocity_controller'],
-                        strictness: 2
+                        strictness: 1
                     }),
                     () => sendGantryPosition(...xyz)
                 );
@@ -487,7 +567,7 @@ addButtonEvents('z-up', () => zDownPressed = true, () => zDownPressed = false);
 addButtonEvents('z-down', () => zUpPressed = true, () => zUpPressed = false);
 
 setInterval(() => {
-    if (!manualMode) return;
+    if (!manualMode || !hasControl) return;
 
     const speed = parseFloat(gantrySpeedSlider.value);
 
@@ -637,5 +717,20 @@ window.onload = () => {
             () => { gantryNx = 0.0; gantryNy = 0.0; }
         );
 
+        function equalizeInfoBoxes() {
+            const boxes = Array.from(document.querySelectorAll('.info-box'));
+            boxes.forEach(b => { b.style.flex = ''; });
+            if (window.matchMedia('(orientation: portrait)').matches) {
+                const maxW = Math.max(...boxes.map(b => b.getBoundingClientRect().width));
+                boxes.forEach(b => { b.style.flex = `0 0 ${maxW}px`; });
+            }
+        }
+        equalizeInfoBoxes();
+        window.addEventListener('resize', equalizeInfoBoxes);
+
     }, 100);
 };
+
+window.addEventListener('beforeunload', () => {
+    if (hasControl) controlLockTopic.publish(new ROSLIB.Message({ data: '' }));
+});

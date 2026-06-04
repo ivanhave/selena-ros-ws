@@ -83,10 +83,45 @@ namespace gantry_hardware
         // Z axis: T8 lead screw → 8mm per revolution
         static constexpr double Z_RAD_PER_METER = 2.0 * M_PI / 0.008; // 785.398 rad/m
 
-        // Max travel limits
+        // --- Velocity caps (velocity mode) — tune here ---
+        // X: GT2 belt, 32 mm/rev — higher torque margin at speed
+        // Y/Z: T8 lead screw, 8 mm/rev — lower torque; Z also carries vertical load
+        static constexpr double  X_VEL_CAP_MS = 0.15;
+        static constexpr double  Y_VEL_CAP_MS = 0.06;
+        static constexpr double  Z_VEL_CAP_MS = 0.04;
+
+        // ACC byte for 0xF6 velocity commands.
+        // Velocity caps above are the primary stall protection; ACC just avoids instantaneous jumps.
+        // Previous tests with ACC=230 worked fine at higher speeds than these caps allow.
+        static constexpr uint8_t X_VEL_ACC    = 230;
+        static constexpr uint8_t Y_VEL_ACC    = 230;
+        static constexpr uint8_t Z_VEL_ACC    = 230;
+
+        // --- Soft-limit decel zone (velocity mode near travel limits) ---
+        static constexpr double  DECEL_ZONE_M = 0.080; // decel starts 80 mm before limit
+        static constexpr double  GUARD_ZONE_M = 0.025; // zero-velocity dead zone at 25 mm
+
+        // --- Travel limits (populated from URDF in on_init) ---
         double x_lower_, x_upper_;
         double y_lower_, y_upper_;
         double z_lower_, z_upper_;
+
+        // Per-motor X positions (rad) updated every read() — used for sync monitoring
+        double x1_pos_rad_ = 0.0;
+        double x2_pos_rad_ = 0.0;
+
+        // Set when X1/X2 diverge past HALT threshold; cleared on re-home.
+        // While true, write() blocks all commands.
+        bool x_sync_fault_ = false;
+
+        // --- Stall auto-recovery state ---
+        // -1 = idle; ≥0 = number of recovery attempts so far
+        int stall_recovery_attempts_ = -1;
+        static constexpr int MAX_STALL_RECOVERY = 5;
+
+        // Coordinated X-axis homing: sends 0x91 to both X motors simultaneously and
+        // monitors both in the same loop, aborting if they diverge unsafely.
+        bool homeXAxisCoordinated();
     };
 
 } // namespace gantry_hardware

@@ -133,20 +133,43 @@ body {
         min-height: auto;
     }
 
-    /* Status panel comes back into flow, 2-box-per-row flex wrap */
+    /* Status panel comes back into flow, boxes in strict 2-column grid */
     #status-panel {
         position: relative;
         top: auto;
         right: auto;
         z-index: auto;
-        display: flex;
-        flex-wrap: wrap;
+        display: grid;
+        grid-template-columns: auto auto;
         justify-content: center;
-        gap: 6px;
+        gap: 5px;
+        margin-top: 8px;
+        width: 100%;
+        padding: 0 2px;
+    }
+
+    .info-box {
+        width: 155px;
+        padding: 4px 6px;
+        grid-template-columns: 1fr 32px 14px;
+        column-gap: 3px;
+        row-gap: 2px;
     }
 
     .info-label {
-        font-size: 0.6rem;
+        font-size: 0.55rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .info-unit {
+        font-size: 0.55rem;
+    }
+
+    .val-box {
+        width: 32px;
+        font-size: 0.58rem;
     }
 
     #header {
@@ -219,6 +242,7 @@ body {
     touch-action: auto;
 }
 
+
 /* ── Manual toggle ── */
 #manual-toggle-wrap {
     display: flex;
@@ -260,10 +284,15 @@ body {
     transition: transform 0.25s, background 0.25s;
 }
 
-#manual-toggle-wrap.active #toggle-knob {
-    transform: translateX(18px);
-    background: #1a7aff;
-}
+#manual-toggle-wrap.active #toggle-track  { background: #00cc66; }
+#manual-toggle-wrap.active #toggle-knob   { transform: translateX(18px); background: #004d26; }
+
+#manual-toggle-wrap.locked #toggle-track  { background: #e94560; }
+#manual-toggle-wrap.locked #toggle-knob   { background: #7a1a2a; }
+
+#manual-toggle-wrap.mission-active        { cursor: not-allowed; }
+#manual-toggle-wrap.mission-active #toggle-track { background: #ff8c00; }
+#manual-toggle-wrap.mission-active #toggle-knob  { background: #7a4000; }
 
 .info-box {
     display: grid;
@@ -300,6 +329,7 @@ body {
         margin-top: 0;
     }
 }
+
 
 .val-box {
     display: inline-block;
@@ -479,4 +509,95 @@ canvas {
     color: #7ab8d4;
     font-weight: normal;
     touch-action: auto;
+}
+
+/* ── Form inputs: override global user-select:none ── */
+input, select, textarea {
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+/* ── Header layout: hamburger + title grouped left, status pushed right ── */
+#header {
+    justify-content: flex-start;
+    gap: 12px;
+}
+
+#status {
+    margin-left: auto;
+}
+
+/* ── Hamburger ── */
+#hamburger {
+    background: transparent;
+    border: none;
+    color: #e94560;
+    font-size: 1.3rem;
+    line-height: 1;
+    padding: 0 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+    touch-action: auto;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* ── Nav dropdown overlay (transparent — closes menu on outside click) ── */
+#nav-overlay {
+    position: fixed;
+    inset: 0;
+    background: transparent;
+    z-index: 200;
+    display: none;
+}
+
+#nav-overlay.nav-overlay--visible {
+    display: block;
+}
+
+/* ── Nav dropdown ── */
+#nav-drawer {
+    position: fixed;
+    top: 32px;
+    left: 0;
+    background: #16213e;
+    border: 1px solid #0f3460;
+    border-top: none;
+    border-radius: 0 0 8px 0;
+    z-index: 201;
+    display: flex;
+    flex-direction: column;
+    min-width: 160px;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-6px);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+#nav-drawer.nav-drawer--open {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+}
+
+#nav-drawer a {
+    display: block;
+    padding: 12px 20px;
+    color: #eee;
+    text-decoration: none;
+    font-size: 0.8rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    border-left: 3px solid transparent;
+    white-space: nowrap;
+    transition: background 0.15s;
+    touch-action: auto;
+}
+
+#nav-drawer a:hover {
+    background: #0f3460;
+}
+
+#nav-drawer a.nav-active {
+    color: #e94560;
+    border-left-color: #e94560;
 }

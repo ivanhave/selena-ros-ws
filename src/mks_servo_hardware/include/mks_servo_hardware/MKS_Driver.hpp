@@ -35,7 +35,9 @@ public:
     double getVelocityRadianPerSec();
 
     // --- SERVO SPECIFIC COMMANDS ---
-    bool goHome(); // Triggers physical return to zero (0x91 0x00)
+    void startHoming(); // Non-blocking: sends 0x91 and returns immediately (use with homeXAxisCoordinated)
+    bool goHome(); // Blocking: sends 0x91 then waits until stationary (use for single-motor axes)
+    void zeroPositionAtHome(); // Call after goHome() — records current step count as home offset
 
     // --- STALL PROTECTION ---
     void enableStallProtection(uint16_t time_ms, uint16_t error_counts);
@@ -46,6 +48,12 @@ public:
 
     // Re-open CAN socket and reset offline state — call from on_activate() to recover
     bool recover();
+
+    // Clear a false-positive offline flag after homing.
+    // MKS motors stop responding to 0x32 velocity polls while executing 0x91 homing,
+    // which causes the online checker to time them out. Call this after homing completes
+    // to reset the flag and force a fresh velocity query.
+    void clearOfflineFlag();
 
 private:
     // 1. Basic Identifiers
@@ -74,6 +82,7 @@ private:
     // 4. Feedback Caching (to avoid jumps if data is temporarily stale)
     double last_valid_pos_ = 0.0;
     double last_valid_vel_ = 0.0;
+    int64_t pos_home_offset_steps_ = 0; // Motor step count at home; subtracted from all position reads
 
     // 5. Constants
     static constexpr double STEPS_PER_REV = 16384.0;

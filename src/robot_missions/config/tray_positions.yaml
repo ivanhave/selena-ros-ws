@@ -10,7 +10,8 @@
 mission_server:
   ros__parameters:
     gripper_tray:
-      gx: 0.0          # TODO: measure — gantry X position of tray center
-      gy: 0.0          # TODO: measure — gantry Y position of tray center
-      z_approach: 0.0  # TODO: measure — Z height to approach tray safely (before lowering)
-      z_pick: 0.0      # TODO: measure — Z height at which gripper closes on seed
+      gx: 0.800        # gantry X position of tray center (meters from home)
+      gy: 0.200        # gantry Y position of tray center (meters from home)
+      z_approach: 0.150  # intermediate safe height before lowering (currently unused in code)
+      z_pick: 0.220    # Z height at which gripper closes on seed (meters from home)
+    soil_surface_z_m: 0.220  # distance from Z-home to soil/floor surface (FlatGroundDepthSensor)

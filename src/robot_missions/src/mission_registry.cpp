@@ -18,7 +18,8 @@ void MissionRegistry::register_mission(const std::string & type, MissionFactory 
 std::unique_ptr<MissionBase> MissionRegistry::create(
     const std::string & type,
     rclcpp::Node::SharedPtr node,
-    const MissionCommand & cmd) const
+    const MissionCommand & cmd,
+    std::shared_ptr<robot_navigation::NavigationProvider> nav) const
 {
     auto it = factories_.find(type);
     if (it == factories_.end()) {
@@ -27,7 +28,7 @@ std::unique_ptr<MissionBase> MissionRegistry::create(
             type.c_str(), factories_.size());
         return nullptr;
     }
-    return it->second(node, cmd);
+    return it->second(node, cmd, nav);
 }
 
 } // namespace robot_missions

@@ -1,0 +1,895 @@
+/* ── Mission status bar ── */
+#mission-status-bar {
+    flex-shrink: 0;
+    height: 32px;
+    background: #0d1b2a;
+    border-bottom: 1px solid #0f3460;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 8px;
+    font-size: 0.68rem;
+    color: #555;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    touch-action: auto;
+}
+
+#mission-status-bar .status-label { color: #7ab8d4; }
+#mission-status-bar.active { color: #e07820; }
+#mission-status-bar.active .status-label { color: #e07820; }
+
+/* ── Missions main split layout ── */
+#missions-main {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* ── Map panel ── */
+#map-panel {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid #0f3460;
+    position: relative;
+}
+
+#map-toolbar {
+    flex-shrink: 0;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    border-bottom: 1px solid #0f3460;
+    background: #0d1b2a;
+    gap: 8px;
+}
+
+#map-title-label {
+    font-size: 0.63rem;
+    color: #7ab8d4;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    white-space: nowrap;
+}
+
+#zoom-controls { display: flex; align-items: center; gap: 6px; }
+
+#zoom-controls button {
+    width: 24px;
+    height: 24px;
+    background: transparent;
+    border: 1px solid #0f3460;
+    color: #eee;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: auto;
+    transition: border-color 0.15s;
+    padding: 0;
+}
+
+#zoom-controls button:hover { border-color: #7ab8d4; }
+#btn-zoom-fit { font-size: 0.7rem !important; }
+
+#zoom-slider {
+    width: 80px;
+    accent-color: #7ab8d4;
+    cursor: pointer;
+    touch-action: auto;
+}
+
+#field-canvas {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    cursor: grab;
+    display: block;
+    touch-action: none;
+    border-radius: 0;
+    border: none;
+}
+
+#field-canvas:active { cursor: grabbing; }
+
+/* ── Map rotation controls (bottom-left corner overlay) ── */
+#map-rotation-controls {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    display: flex;
+    gap: 4px;
+    z-index: 10;
+}
+
+#map-rotation-controls button {
+    width: 28px;
+    height: 28px;
+    background: rgba(13, 27, 42, 0.85);
+    border: 1px solid #0f3460;
+    color: #7ab8d4;
+    border-radius: 5px;
+    font-size: 1.0rem;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: border-color 0.15s, color 0.15s;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: auto;
+}
+
+#map-rotation-controls button:hover {
+    border-color: #7ab8d4;
+    color: #eee;
+}
+
+/* ── Odom drift warning ── */
+#odom-drift-warning {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(180, 60, 0, 0.9);
+    color: #fff;
+    padding: 5px 14px;
+    border-radius: 4px;
+    font-size: 0.68rem;
+    letter-spacing: 0.5px;
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+/* ── Mission sidebar ── */
+#mission-sidebar {
+    width: 290px;
+    flex-shrink: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px;
+    touch-action: pan-y;
+}
+
+/* Secondary card group (weeding, watering) — stacked by default; goes side-by-side in fullscreen */
+#mission-sidebar-secondary {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* ── Mission cards ── */
+.mission-card {
+    position: relative;
+    border: 1px solid #0f3460;
+    border-radius: 12px;
+    padding: 14px;
+    background: #0d1b2a;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    touch-action: auto;
+    transition: border-color 0.25s, opacity 0.25s;
+    flex-shrink: 0;
+}
+
+.mission-card--active  { border-color: #e94560; }
+.mission-card--disabled { opacity: 0.35; pointer-events: none; }
+.mission-card--locked  { opacity: 0.25; pointer-events: none; }
+.mission-card--config  { border-color: #0f3460; }
+
+.mission-coming-soon-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    letter-spacing: 2px;
+    color: #555;
+    text-transform: uppercase;
+    border-radius: 12px;
+    background: rgba(10, 10, 20, 0.4);
+}
+
+.mission-card-title {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #e94560;
+    font-weight: 600;
+}
+
+.mission-card--config .mission-card-title { color: #7ab8d4; }
+
+/* ── Zone Planner card ── */
+.zp-instruction {
+    font-size: 0.72rem;
+    color: #7ab8d4;
+    line-height: 1.4;
+    font-style: italic;
+}
+
+.zp-coords { display: flex; flex-direction: column; gap: 4px; }
+
+.zp-row {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.zp-label-gap { margin-left: 8px; }
+
+.zp-value {
+    font-size: 0.78rem;
+    color: #eee;
+    font-family: monospace;
+}
+
+.zp-select {
+    width: 100%;
+    background: #16213e;
+    color: #eee;
+    border: 1px solid #0f3460;
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 0.78rem;
+    font-family: inherit;
+    cursor: pointer;
+    touch-action: auto;
+    accent-color: #7ab8d4;
+    margin-top: 2px;
+}
+
+.zp-select:focus { outline: 1px solid #7ab8d4; outline-offset: 0; }
+
+#zp-stats {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 4px 10px;
+    font-size: 0.7rem;
+    padding: 8px 10px;
+    background: #16213e;
+    border-radius: 6px;
+    border: 1px solid #0f3460;
+}
+
+/* ── Zones divider (between planner and list within the same card) ── */
+.zones-divider {
+    height: 1px;
+    background: #0f3460;
+    margin: 2px 0;
+}
+
+/* ── Zones list ── */
+#zones-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.zone-item {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 7px 9px;
+    background: #16213e;
+    border: 1px solid #0f3460;
+    border-radius: 7px;
+    font-size: 0.7rem;
+    touch-action: auto;
+}
+
+.zone-number-badge {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: #1a3060;
+    border: 1.5px solid #4a88f0;
+    color: #7ab8d4;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: monospace;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    align-self: flex-start;
+    margin-top: 1px;
+}
+
+.zone-item-info {
+    flex: 1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 14px;
+    align-items: baseline;
+    min-width: 0;
+}
+
+.zi-primary {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    font-size: 0.72rem;
+    color: #eee;
+    line-height: 1.5;
+}
+
+/* Stats row: chips wrap onto 2–3 lines on narrow screens */
+.zi-stats-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1px 10px;
+    flex: 0 0 100%;   /* always own line, then chips wrap within it */
+}
+
+.zi-stat-chip {
+    white-space: nowrap;
+    font-size: 0.64rem;
+    color: #ccc;
+    font-family: monospace;
+    line-height: 1.6;
+}
+
+.zi-lbl {
+    font-size: 0.58rem;
+    color: #4a7090;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+/* Progress bar always spans full width of the info area */
+.zone-item-info .zone-progress-bar {
+    flex: 0 0 100%;
+    margin-top: 2px;
+}
+
+.zone-item-right {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    flex-shrink: 0;
+    padding-top: 1px;
+}
+
+.zone-status-badge {
+    font-size: 0.58rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 2px 5px;
+    border-radius: 3px;
+    white-space: nowrap;
+}
+
+.zone-status--planned     { background: rgba(40,100,200,0.3); color: #4a88f0; border: 1px solid #224070; }
+.zone-status--in_progress { background: rgba(210,120,20,0.3); color: #e07820; border: 1px solid #703010; }
+.zone-status--completed   { background: rgba(30,170,80,0.3);  color: #20b060; border: 1px solid #104030; }
+.zone-status--failed      { background: rgba(190,30,50,0.3);  color: #c02040; border: 1px solid #601020; }
+.zone-status--cancelling  { background: rgba(190,30,50,0.3);  color: #e03050; border: 1px solid #801828; }
+
+.zone-delete-btn {
+    background: transparent;
+    border: 1px solid #0f3460;
+    color: #555;
+    border-radius: 4px;
+    width: 20px;
+    height: 20px;
+    font-size: 0.65rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: border-color 0.15s, color 0.15s;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: auto;
+}
+
+.zone-delete-btn:hover { border-color: #e94560; color: #e94560; }
+
+.zone-start-btn {
+    background: transparent;
+    border: 1px solid #20b060;
+    color: #20b060;
+    border-radius: 4px;
+    width: 20px;
+    height: 20px;
+    font-size: 0.6rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: auto;
+}
+
+.zone-start-btn:hover:not(:disabled) { background: rgba(32, 176, 96, 0.18); }
+.zone-start-btn:disabled { opacity: 0.25; cursor: default; }
+
+.zone-cancel-btn {
+    background: transparent;
+    border: 1px solid #e94560;
+    color: #e94560;
+    border-radius: 4px;
+    width: 20px;
+    height: 20px;
+    font-size: 0.6rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: border-color 0.15s, background 0.15s;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: auto;
+}
+
+.zone-cancel-btn:hover { background: rgba(233, 69, 96, 0.18); }
+
+/* Stale in_progress reset — same shape as cancel but orange to signal "no live mission" */
+.zone-reset-btn {
+    background: transparent;
+    border: 1px solid #e07820;
+    color: #e07820;
+    border-radius: 4px;
+    width: 20px;
+    height: 20px;
+    font-size: 0.6rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: border-color 0.15s, background 0.15s;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: auto;
+}
+.zone-reset-btn:hover { background: rgba(224, 120, 32, 0.18); }
+
+.zone-progress-bar {
+    height: 3px;
+    background: #1a2838;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 3px;
+    width: 100%;
+}
+
+.zone-progress-fill {
+    height: 100%;
+    background: #e07820;
+    border-radius: 2px;
+    transition: width 0.5s ease;
+    min-width: 2px;
+}
+
+/* ── Field Configuration bar (above map) ── */
+#field-config-card {
+    flex-shrink: 0;
+    flex-direction: column;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    border-top: none;
+    padding: 8px 14px;
+    gap: 6px;
+}
+
+#fc-inputs-row {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 12px 8px;
+}
+
+#fc-inputs-row .fc-group {
+    flex: 0 0 auto;
+}
+
+#field-config-card .fc-group input {
+    width: 80px;
+}
+
+/* Narrow: split into exactly 2 rows of 3 */
+@media (max-width: 560px) {
+    #fc-inputs-row .fc-group {
+        flex: 1 1 calc(33.33% - 6px);
+    }
+    #field-config-card .fc-group input {
+        width: 100%;
+        box-sizing: border-box;
+    }
+}
+
+/* ── Field config card (legacy, kept for fc-group reuse elsewhere) ── */
+.fc-row { display: flex; gap: 8px; align-items: flex-end; }
+
+.fc-group {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.fc-group input {
+    width: 100%;
+    background: #16213e;
+    border: 1px solid #0f3460;
+    border-radius: 5px;
+    padding: 5px 6px;
+    color: #eee;
+    font-size: 0.72rem;
+    font-family: inherit;
+}
+
+.fc-group input:focus { outline: 1px solid #7ab8d4; outline-offset: 0; }
+
+.fc-actions { display: flex; align-items: center; gap: 8px; }
+
+.fc-save-status {
+    font-size: 0.62rem;
+    color: #00ff88;
+    flex: 1;
+    text-align: right;
+}
+
+/* ── Field labels / hints ── */
+.field-label {
+    font-size: 0.63rem;
+    color: #7ab8d4;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.field-hint {
+    font-size: 0.6rem;
+    color: #4a6070;
+    font-style: italic;
+    display: block;
+    margin-top: 2px;
+}
+
+/* ── Seed selector (Planting card) ── */
+.seed-selector-wrap { display: flex; flex-direction: column; }
+
+.custom-select { position: relative; width: 100%; }
+
+.custom-select-trigger {
+    width: 100%;
+    background: #16213e;
+    color: #eee;
+    border: 1px solid #0f3460;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 0.78rem;
+    font-family: inherit;
+    cursor: pointer;
+    touch-action: auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    text-align: left;
+    transition: border-color 0.15s;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.custom-select-trigger:focus { outline: 1px solid #e94560; outline-offset: 0; }
+.custom-select-trigger:disabled { opacity: 0.5; cursor: default; }
+
+.custom-select-caret { font-size: 0.7rem; color: #7ab8d4; pointer-events: none; }
+
+.custom-select-list {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: #16213e;
+    border: 1px solid #0f3460;
+    border-radius: 6px;
+    max-height: 160px;
+    overflow-y: auto;
+    z-index: 200;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+
+.custom-select-option {
+    padding: 7px 10px;
+    font-size: 0.78rem;
+    color: #eee;
+    cursor: pointer;
+    transition: background 0.1s;
+    touch-action: auto;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.custom-select-option:hover { background: #1e3050; }
+.custom-select-option.is-selected { color: #e94560; }
+
+/* ── Seed specs tiles ── */
+#seed-specs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px;
+    background: #16213e;
+    border-radius: 6px;
+    border: 1px solid #0f3460;
+}
+
+.spec-item {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    flex: 1;
+    min-width: 68px;
+}
+
+.spec-label { font-size: 0.6rem; color: #7ab8d4; text-transform: uppercase; letter-spacing: 0.5px; }
+.spec-value { font-size: 0.78rem; color: #eee; }
+
+/* ── Seed action buttons ── */
+.seed-actions { display: flex; gap: 8px; }
+
+.btn-secondary {
+    background: transparent;
+    border: 1px solid #0f3460;
+    color: #eee;
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 0.7rem;
+    font-family: inherit;
+    cursor: pointer;
+    touch-action: auto;
+    transition: border-color 0.15s;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.btn-secondary:hover { border-color: #7ab8d4; }
+.btn-secondary:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
+
+/* ── Start / Cancel button ── */
+#btn-start-mission {
+    width: 100%;
+    padding: 10px;
+    background: #e94560;
+    color: #fff;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    font-size: 0.78rem;
+    font-family: inherit;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    cursor: pointer;
+    touch-action: auto;
+    transition: background 0.2s, border-color 0.2s, color 0.2s;
+    -webkit-tap-highlight-color: transparent;
+}
+
+#btn-start-mission.cancel-mode {
+    background: transparent;
+    border-color: #e94560;
+    color: #e94560;
+}
+
+/* ── Modal overlay ── */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 300;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: auto;
+}
+
+.modal-overlay.hidden { display: none; }
+
+/* ── Modal box ── */
+.modal {
+    background: #16213e;
+    border: 1px solid #0f3460;
+    border-radius: 12px;
+    padding: 24px;
+    width: 340px;
+    max-width: 92vw;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    touch-action: auto;
+}
+
+.modal.hidden { display: none; }
+
+.modal-title {
+    font-size: 0.85rem;
+    color: #e94560;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.modal-body {
+    font-size: 0.78rem;
+    color: #eee;
+    line-height: 1.5;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+.btn-primary {
+    background: #e94560;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 0.73rem;
+    font-family: inherit;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    cursor: pointer;
+    touch-action: auto;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.btn-primary:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
+
+/* ── Seed form modal ── */
+.modal-form { display: flex; flex-direction: column; gap: 10px; }
+.form-group { display: flex; flex-direction: column; gap: 4px; }
+.form-hint { font-size: 0.62rem; color: #4a6070; margin-top: 2px; }
+
+.modal-form input,
+.modal-form select {
+    width: 100%;
+    background: #0d1b2a;
+    border: 1px solid #0f3460;
+    border-radius: 6px;
+    padding: 7px 8px;
+    color: #eee;
+    font-size: 0.78rem;
+    font-family: inherit;
+}
+
+.modal-form input:focus,
+.modal-form select:focus { outline: 1px solid #e94560; outline-offset: 0; }
+
+.form-error { font-size: 0.7rem; color: #e94560; margin-top: -4px; }
+
+.hidden { display: none !important; }
+
+/* ── Portrait (phone / tablet upright) ── */
+@media (orientation: portrait) {
+    #missions-main {
+        flex-direction: column;
+    }
+
+    #map-panel {
+        flex: none;
+        height: 45vh;
+        border-right: none;
+        border-bottom: 1px solid #0f3460;
+    }
+
+    #mission-sidebar {
+        width: 100%;
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+    }
+
+    #mission-status-bar { position: sticky; top: 32px; z-index: 100; }
+}
+
+/* ── Landscape, desktop & tablet (≥500 px tall) — full-screen grid layout ── */
+/*    Map sticks to top-left. Planting card fills the right 1/3 beside it.   */
+/*    When the planting card outgrows the map, the secondary cards            */
+/*    (Weeding, Watering) fill the full-width area below the map side-by-side.*/
+@media (orientation: landscape) and (min-height: 500px) {
+    /* Page scrolls so cards are never clipped */
+    #app {
+        height: 100vh;
+        overflow-y: auto;
+        overflow-x: hidden;
+    }
+
+    #header {
+        position: sticky;
+        top: 0;
+        z-index: 200;
+    }
+
+    #mission-status-bar {
+        position: sticky;
+        top: 32px;
+        z-index: 199;
+    }
+
+    /* CSS Grid: two columns (map 2/3, planting 1/3) with an auto second row */
+    #missions-main {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        align-items: start;
+        align-content: start; /* pack rows at the top — no gap inserted between tracks */
+        overflow: visible;
+        /* flex: 1 from base CSS keeps #missions-main filling remaining height → footer stays at bottom */
+    }
+
+    /* Map: left column, explicit 60vh so the canvas fills it correctly */
+    #map-panel {
+        grid-column: 1;
+        grid-row: 1;
+        height: 60vh;
+        border-right: 1px solid #0f3460;
+    }
+
+    /* Sidebar wrapper becomes invisible to the grid — children become direct grid items */
+    #mission-sidebar {
+        display: contents;
+    }
+
+    /* Planting card: right column, top row, same height as map so row 1 is uniform */
+    #mission-card-planting {
+        grid-column: 2;
+        grid-row: 1;
+        max-height: 60vh;
+        overflow-y: auto;
+        touch-action: pan-y;
+        margin: 12px 12px 0 12px; /* restore spacing lost when sidebar wrapper disappears */
+    }
+
+    /* Secondary group: spans full width in the row below the map */
+    #mission-sidebar-secondary {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        flex-direction: row;   /* override the default column */
+        padding: 12px;
+        gap: 12px;
+    }
+
+    #mission-card-weeding,
+    #mission-card-watering {
+        flex: 1;
+        min-width: 280px;
+    }
+}
+
+/* ── Mobile landscape (≤500 px tall, e.g. phone sideways) ── */
+@media (max-height: 500px) and (orientation: landscape) {
+    #map-panel {
+        flex: 2;
+        min-height: 200px;
+        max-height: 80vh;
+    }
+
+    #mission-sidebar {
+        flex: 1;
+        min-width: 200px;
+        width: auto;
+        padding: 8px;
+        gap: 8px;
+        overflow-y: auto;
+    }
+}

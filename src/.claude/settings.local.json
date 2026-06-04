@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(pkill -f \"gz sim\\\\|gazebo\\\\|robot_state_publisher\\\\|gripper_sim\\\\|joint_state\\\\|spawner\\\\|rviz2\\\\|ros_gz\")"
+      "Bash(pkill -f \"gz sim\\\\|gazebo\\\\|robot_state_publisher\\\\|gripper_sim\\\\|joint_state\\\\|spawner\\\\|rviz2\\\\|ros_gz\")",
+      "Read(//home/ivan/selena_ros_ws/**)",
+      "Bash(colcon build *)",
+      "Bash(find /opt/ros -name \"yaml-cpp*\" -name \"*.cmake\" 2>/dev/null | head -10; find /opt/ros -path \"*/yaml_cpp_vendor*\" -name \"*.cmake\" 2>/dev/null | head -5)",
+      "Read(//opt/ros/**)"
     ]
   }
 }

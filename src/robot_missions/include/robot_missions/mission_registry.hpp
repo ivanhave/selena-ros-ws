@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include "rclcpp/rclcpp.hpp"
 #include "robot_missions/mission_base.hpp"
+#include "robot_navigation/navigation_provider.hpp"
 
 namespace robot_missions
 {
@@ -21,7 +22,10 @@ namespace robot_missions
 //   Zero changes to any existing file.
 
 using MissionFactory = std::function<
-    std::unique_ptr<MissionBase>(rclcpp::Node::SharedPtr, const MissionCommand &)>;
+    std::unique_ptr<MissionBase>(
+        rclcpp::Node::SharedPtr,
+        const MissionCommand &,
+        std::shared_ptr<robot_navigation::NavigationProvider>)>;
 
 class MissionRegistry
 {
@@ -33,7 +37,8 @@ public:
     std::unique_ptr<MissionBase> create(
         const std::string & type,
         rclcpp::Node::SharedPtr node,
-        const MissionCommand & cmd) const;
+        const MissionCommand & cmd,
+        std::shared_ptr<robot_navigation::NavigationProvider> nav) const;
 
 private:
     MissionRegistry() = default;
@@ -62,15 +67,18 @@ struct MissionRegistrar
 //
 // Requires ClassName to have:
 //   static std::unique_ptr<ClassName> create_from_command(
-//       rclcpp::Node::SharedPtr, const MissionCommand &);
+//       rclcpp::Node::SharedPtr,
+//       const MissionCommand &,
+//       std::shared_ptr<robot_navigation::NavigationProvider>);
 
-#define REGISTER_MISSION(type_str, ClassName)                                    \
-    static ::robot_missions::MissionRegistrar                                    \
-    _mission_registrar_##ClassName(                                              \
-        type_str,                                                                \
-        [](::rclcpp::Node::SharedPtr node,                                       \
-           const ::robot_missions::MissionCommand & cmd)                         \
-               -> std::unique_ptr<::robot_missions::MissionBase>                 \
-        {                                                                        \
-            return ClassName::create_from_command(node, cmd);                    \
+#define REGISTER_MISSION(type_str, ClassName)                                          \
+    static ::robot_missions::MissionRegistrar                                          \
+    _mission_registrar_##ClassName(                                                    \
+        type_str,                                                                      \
+        [](::rclcpp::Node::SharedPtr node,                                             \
+           const ::robot_missions::MissionCommand & cmd,                               \
+           std::shared_ptr<::robot_navigation::NavigationProvider> nav)                \
+               -> std::unique_ptr<::robot_missions::MissionBase>                       \
+        {                                                                              \
+            return ClassName::create_from_command(node, cmd, nav);                     \
         })

@@ -1,0 +1,17 @@
+field:
+  origin:
+    x: 0
+    y: 0
+    yaw: 0
+  strip_width: 0.845
+  strip_length: 10
+  strip_spacing: 1.2
+  strips:
+  - id: 0
+    enabled: true
+  - id: 1
+    enabled: true
+  - id: 2
+    enabled: true
+  - id: 3
+    enabled: true
