@@ -216,6 +216,20 @@
 .mission-card--config .mission-card-title { color: #7ab8d4; }
 
 /* ── Zone Planner card ── */
+.zp-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.zp-header .field-label {
+    display: inline;
+    margin-bottom: 0;
+    white-space: nowrap;
+}
+
 .zp-instruction {
     font-size: 0.72rem;
     color: #7ab8d4;
@@ -330,12 +344,10 @@
     line-height: 1.5;
 }
 
-/* Stats row: chips wrap onto 2–3 lines on narrow screens */
 .zi-stats-row {
     display: flex;
     flex-wrap: wrap;
     gap: 1px 10px;
-    flex: 0 0 100%;   /* always own line, then chips wrap within it */
 }
 
 .zi-stat-chip {
@@ -542,6 +554,10 @@
 }
 
 .fc-group input:focus { outline: 1px solid #7ab8d4; outline-offset: 0; }
+
+.fc-group input[type="number"]:disabled {
+    pointer-events: none;
+}
 
 .fc-actions { display: flex; align-items: center; gap: 8px; }
 
@@ -781,26 +797,54 @@
 .hidden { display: none !important; }
 
 /* ── Portrait (phone / tablet upright) ── */
+/* style.css makes #app scrollable for the teleop page; missions needs a fixed
+   viewport so the map stays visible and only the sidebar scrolls.
+   !important is required here to beat style.css portrait declarations with
+   identical specificity that load first. */
 @media (orientation: portrait) {
+    html, body {
+        height: 100% !important;
+        overflow: hidden !important;
+    }
+
+    #app {
+        height: 100vh !important;
+        height: 100dvh !important;
+        min-height: 0 !important;
+        overflow: hidden !important;
+        touch-action: none !important;
+    }
+
+    #field-config-card {
+        margin: 0 10px;
+        border-radius: 8px;
+    }
+
     #missions-main {
-        flex-direction: column;
+        flex: 1 !important;
+        min-height: 0 !important;
+        overflow: hidden !important;
+        flex-direction: column !important;
     }
 
     #map-panel {
         flex: none;
-        height: 45vh;
+        height: 42vh;
         border-right: none;
         border-bottom: 1px solid #0f3460;
     }
 
     #mission-sidebar {
-        width: 100%;
         flex: 1;
+        width: 100%;
         min-height: 0;
         overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-y;
+        padding: 10px;
     }
 
-    #mission-status-bar { position: sticky; top: 32px; z-index: 100; }
+    #mission-status-bar { position: static; }
 }
 
 /* ── Landscape, desktop & tablet (≥500 px tall) — full-screen grid layout ── */

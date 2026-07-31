@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Serves the robot_web_app web app on port 8080.
-Launched automatically by teleop.launch.xml.
+Launched automatically by web_app.launch.xml.
 """
 import os
 import re

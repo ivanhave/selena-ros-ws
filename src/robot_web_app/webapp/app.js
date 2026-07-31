@@ -50,14 +50,10 @@ ros.on('connection', () => {
     dot.classList.add('connected');
     txt.textContent = 'Connected';
     reconnectDelay = 3000;
-    // Fix spawner-race: ensure JTC active on connect, but only when no client holds the lock.
+    // Ensure gantry is in position mode on connect (no-op if already there).
     if (!controlLockOwner) {
-        switchControllerService.callService(
-            new ROSLIB.ServiceRequest({
-                activate_controllers: ['joint_trajectory_controller'],
-                deactivate_controllers: ['gantry_velocity_controller'],
-                strictness: 1
-            }),
+        gantrySetModeService.callService(
+            new ROSLIB.ServiceRequest({ velocity_mode: false, urgent: false }),
             () => {}
         );
     }
@@ -78,20 +74,15 @@ const cmdVelTopic = new ROSLIB.Topic({
     messageType: 'geometry_msgs/TwistStamped'
 });
 
-const jointTrajTopic = new ROSLIB.Topic({
-    ros, name: '/joint_trajectory_controller/joint_trajectory',
-    messageType: 'trajectory_msgs/JointTrajectory'
-});
-
 const gantryVelTopic = new ROSLIB.Topic({
-    ros, name: '/gantry_velocity_controller/commands',
+    ros, name: '/gantry/cmd_vel',
     messageType: 'std_msgs/Float64MultiArray'
 });
 
-const switchControllerService = new ROSLIB.Service({
+const gantrySetModeService = new ROSLIB.Service({
     ros,
-    name: '/controller_manager/switch_controller',
-    serviceType: 'controller_manager_msgs/SwitchController'
+    name: '/gantry/set_mode',
+    serviceType: 'robot_gantry/srv/GantrySetMode'
 });
 
 // ── Gripper topics — defined once at top level ────────────
@@ -221,22 +212,12 @@ function setManualMode(enabled) {
     if (baseJoystick) baseJoystick.redraw();
     if (gantryJoystick) gantryJoystick.redraw();
 
-    // Switch ros2_control controllers
-    const activate = enabled ? ['gantry_velocity_controller'] : ['joint_trajectory_controller'];
-    const deactivate = enabled ? ['joint_trajectory_controller'] : ['gantry_velocity_controller'];
-
-    switchControllerService.callService(
-        new ROSLIB.ServiceRequest({
-            activate_controllers: activate,
-            deactivate_controllers: deactivate,
-            strictness: 2
-        }),
+    // Switch gantry mode via robot_gantry (urgent when enabling manual to preempt any move)
+    gantrySetModeService.callService(
+        new ROSLIB.ServiceRequest({ velocity_mode: enabled, urgent: enabled }),
         (result) => {
-            const ok = result && result.ok;
-            console.log('Controller switch:', ok ? 'OK' : 'FAILED');
-            if (!enabled && ok) {
-                sendGantryPosition(currentX, currentY, currentZ);
-            }
+            const ok = result && result.success;
+            console.log('Gantry mode switch:', ok ? 'OK' : 'FAILED');
         }
     );
 
@@ -500,30 +481,18 @@ odomSub.subscribe((msg) => {
     document.getElementById('odom-phi-val').value = (Math.abs(yaw) < 0.005 ? 0 : yaw * 180 / Math.PI).toFixed(1);
 });
 
-// Hardware velocity caps (must match gantry_hardware_interface.hpp)
-const X_HW_CAP = 0.15, Y_HW_CAP = 0.06, Z_HW_CAP = 0.04;
-
-function sendGantryPosition(x, y, z) {
+function sendGantryMove(x, y, z) {
     x = Math.max(X_MIN, Math.min(X_MAX, x));
     y = Math.max(Y_MIN, Math.min(Y_MAX, y));
     z = Math.max(Z_MIN, Math.min(Z_MAX, z));
-    // Cubic spline peak velocity = 1.5 × (distance / time).
-    // Set time so peak ≤ each axis hardware cap → smooth deceleration to target.
-    const secs = Math.max(0.5,
-        1.5 * Math.abs(x - currentX) / X_HW_CAP,
-        1.5 * Math.abs(y - currentY) / Y_HW_CAP,
-        1.5 * Math.abs(z - currentZ) / Z_HW_CAP
-    );
-    const now = Date.now();
-    jointTrajTopic.publish(new ROSLIB.Message({
-        header: {
-            stamp: { sec: Math.floor(now / 1000), nanosec: (now % 1000) * 1000000 },
-            frame_id: ''
-        },
-        joint_names: ['x_axis_joint', 'y_axis_joint', 'z_axis_joint'],
-        points: [{ positions: [x, y, z], velocities: [0.0, 0.0, 0.0],
-                   time_from_start: { sec: Math.floor(secs), nanosec: Math.round((secs % 1) * 1e9) } }]
-    }));
+    ros.callOnConnection({
+        op:          'send_action_goal',
+        action:      '/gantry/move',
+        action_type: 'robot_gantry/action/GantryMove',
+        id:          'gantry_move_' + Date.now(),
+        args:        { x: x, y: y, z: z },
+        feedback:    false,
+    });
 }
 
 [
@@ -536,16 +505,7 @@ function sendGantryPosition(x, y, z) {
             const mm = parseFloat(e.target.value);
             if (!isNaN(mm)) {
                 const xyz = toXYZ(mm / 1000);
-                // Always switch to JTC first (BEST_EFFORT = no-op if already active),
-                // send trajectory only after switch is confirmed.
-                switchControllerService.callService(
-                    new ROSLIB.ServiceRequest({
-                        activate_controllers: ['joint_trajectory_controller'],
-                        deactivate_controllers: ['gantry_velocity_controller'],
-                        strictness: 1
-                    }),
-                    () => sendGantryPosition(...xyz)
-                );
+                sendGantryMove(...xyz);
             }
             e.target.blur();
         }

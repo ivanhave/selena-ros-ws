@@ -103,7 +103,7 @@ function startZoneMission(zoneId) {
             zoneMissionFeedback = msg.values;
             const z = (missionZones.zones || []).find(z => z.zone_id === zoneId);
             setMissionStatusBar(z || zone);
-            renderZonesList();
+            updateActiveZoneProgress();
             _persistMissionState();
         } else if (msg.op === 'action_result') {
             _clearActiveGoalListener();
@@ -415,7 +415,7 @@ function _subscribeActionFeedback() {
         };
         const z = (missionZones.zones || []).find(z => z.zone_id === activeMissionZoneId);
         if (z) setMissionStatusBar(z);
-        renderZonesList();
+        updateActiveZoneProgress();
         _persistMissionState();
     });
 }

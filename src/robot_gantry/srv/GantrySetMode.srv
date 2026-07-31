@@ -1,0 +1,6 @@
+# Request a mode switch between position (JTC) and velocity (ForwardCommandController)
+bool velocity_mode   # true = velocity mode, false = position mode
+bool urgent          # if true, cancel/stop current operation immediately before switching
+---
+bool   success
+string message

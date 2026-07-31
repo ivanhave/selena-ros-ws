@@ -1,38 +1,28 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>robot_missions</name>
+  <name>robot_gantry</name>
   <version>0.1.0</version>
-  <description>
-    Mission framework for Selena agricultural robot.
-  </description>
+  <description>Single control point for all gantry motion (position and velocity modes).</description>
   <maintainer email="ivanrabei@gmail.com">Ivan</maintainer>
   <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
   <buildtool_depend>rosidl_default_generators</buildtool_depend>
 
-  <depend>robot_navigation</depend>
-  <depend>robot_gantry</depend>
-<depend>controller_manager_msgs</depend>
-  <depend>ament_index_cpp</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_action</depend>
-  <depend>std_msgs</depend>
-  <depend>geometry_msgs</depend>
-  <depend>nav_msgs</depend>
+  <depend>control_msgs</depend>
+  <depend>controller_manager_msgs</depend>
   <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
   <depend>trajectory_msgs</depend>
-  <depend>rosidl_default_runtime</depend>
-  <depend>yaml_cpp_vendor</depend>
-  <depend>robot_description</depend>
-
-  <test_depend>ament_cmake_gtest</test_depend>
+  <depend>urdf</depend>
+<depend>rosidl_default_runtime</depend>
 
   <member_of_group>rosidl_interface_packages</member_of_group>
 
   <export>
     <build_type>ament_cmake</build_type>
   </export>
-
 </package>

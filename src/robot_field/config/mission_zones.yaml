@@ -5,7 +5,7 @@ zones:
   end_along: 1
   mission_type: plant
   target: naut
-  status: completed
+  status: planned
 - zone_id: '1780398080991'
   strip_id: 1
   start_along: 1.6

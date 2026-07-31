@@ -2,6 +2,7 @@
 #define GANTRY_HARDWARE_INTERFACE_HPP
 
 #include "MKS_Driver.hpp"
+#include "robot_gantry/gantry_constants.hpp"
 #include "hardware_interface/system_interface.hpp"
 #include "hardware_interface/types/hardware_interface_return_values.hpp"
 #include "hardware_interface/hardware_info.hpp"
@@ -83,23 +84,15 @@ namespace gantry_hardware
         // Z axis: T8 lead screw → 8mm per revolution
         static constexpr double Z_RAD_PER_METER = 2.0 * M_PI / 0.008; // 785.398 rad/m
 
-        // --- Velocity caps (velocity mode) — tune here ---
-        // X: GT2 belt, 32 mm/rev — higher torque margin at speed
-        // Y/Z: T8 lead screw, 8 mm/rev — lower torque; Z also carries vertical load
-        static constexpr double  X_VEL_CAP_MS = 0.15;
-        static constexpr double  Y_VEL_CAP_MS = 0.06;
-        static constexpr double  Z_VEL_CAP_MS = 0.04;
-
-        // ACC byte for 0xF6 velocity commands.
-        // Velocity caps above are the primary stall protection; ACC just avoids instantaneous jumps.
-        // Previous tests with ACC=230 worked fine at higher speeds than these caps allow.
-        static constexpr uint8_t X_VEL_ACC    = 230;
-        static constexpr uint8_t Y_VEL_ACC    = 230;
-        static constexpr uint8_t Z_VEL_ACC    = 230;
-
-        // --- Soft-limit decel zone (velocity mode near travel limits) ---
-        static constexpr double  DECEL_ZONE_M = 0.080; // decel starts 80 mm before limit
-        static constexpr double  GUARD_ZONE_M = 0.025; // zero-velocity dead zone at 25 mm
+        // --- Velocity caps and decel zone — sourced from gantry_constants.hpp ---
+        static constexpr double  X_VEL_CAP_MS = gantry_constants::X_VEL_CAP;
+        static constexpr double  Y_VEL_CAP_MS = gantry_constants::Y_VEL_CAP;
+        static constexpr double  Z_VEL_CAP_MS = gantry_constants::Z_VEL_CAP;
+        static constexpr uint8_t X_VEL_ACC    = gantry_constants::VEL_ACC;
+        static constexpr uint8_t Y_VEL_ACC    = gantry_constants::VEL_ACC;
+        static constexpr uint8_t Z_VEL_ACC    = gantry_constants::VEL_ACC;
+        static constexpr double  DECEL_ZONE_M = gantry_constants::DECEL_ZONE_M;
+        static constexpr double  GUARD_ZONE_M = gantry_constants::GUARD_ZONE_M;
 
         // --- Travel limits (populated from URDF in on_init) ---
         double x_lower_, x_upper_;

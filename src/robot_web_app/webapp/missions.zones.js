@@ -211,6 +211,7 @@ function renderZonePlanner() {
     const statsEl     = document.getElementById('zp-stats');
     const overlapErr  = document.getElementById('zp-overlap-error');
     const addBtn      = document.getElementById('btn-zp-add');
+    const clearBtn    = document.getElementById('btn-zp-clear');
 
     const hasStrips = fieldConfig && (fieldConfig.field.strips || []).some(s => s.enabled);
 
@@ -224,8 +225,11 @@ function renderZonePlanner() {
         statsEl.classList.add('hidden');
         overlapErr.classList.add('hidden');
         addBtn.disabled = true;
+        clearBtn.disabled = true;
         return;
     }
+
+    clearBtn.disabled = false;
 
     coordsEl.classList.remove('hidden');
     stripEl.textContent = 'Strip ' + (zonePreview.stripId + 1);
@@ -349,28 +353,44 @@ function renderZonesList() {
         </div>`;
     }).join('');
 
-    listEl.querySelectorAll('.zone-start-btn').forEach(btn => {
-        btn.addEventListener('click', e => { e.stopPropagation(); startZoneMission(btn.dataset.zoneId); });
-    });
-    listEl.querySelectorAll('.zone-cancel-btn').forEach(btn => {
-        btn.addEventListener('click', e => { e.stopPropagation(); showCancelZoneModal(); });
-    });
-    listEl.querySelectorAll('.zone-reset-btn').forEach(btn => {
-        btn.addEventListener('click', e => {
-            e.stopPropagation();
-            const z = (missionZones.zones || []).find(z => z.zone_id === btn.dataset.zoneId);
-            if (z && z.status === 'in_progress') {
-                z.status = 'planned';
-                saveMissionZones();
-                renderZonesList();
-                if (mapRenderer) mapRenderer.scheduleDraw();
-            }
-        });
-    });
-    listEl.querySelectorAll('.zone-delete-btn').forEach(btn => {
-        btn.addEventListener('click', e => { e.stopPropagation(); showDeleteZoneModal(btn.dataset.zoneId); });
-    });
 }
+
+// Surgical progress update — only changes the fill width on the active zone's progress bar.
+// Called on every feedback tick (2 Hz) instead of full renderZonesList(), so the ■ button
+// DOM node is never destroyed between mousedown and mouseup.
+function updateActiveZoneProgress() {
+    if (!activeMissionZoneId || !zoneMissionFeedback) return;
+    const pct  = Math.round(zoneMissionFeedback.progress_percent ?? 0);
+    const fill = document.querySelector('#zones-list .zone-progress-fill');
+    if (fill) fill.style.width = pct + '%';
+}
+
+// Single delegated listener on the container — survives innerHTML replacements caused by
+// real state changes (zone added/deleted/completed). Per-button listeners attached inside
+// renderZonesList() would require the full list to be stable at click time.
+document.getElementById('zones-list').addEventListener('click', e => {
+    e.stopPropagation();
+    const cancelBtn = e.target.closest('.zone-cancel-btn');
+    if (cancelBtn) { showCancelZoneModal(); return; }
+
+    const startBtn = e.target.closest('.zone-start-btn');
+    if (startBtn) { startZoneMission(startBtn.dataset.zoneId); return; }
+
+    const resetBtn = e.target.closest('.zone-reset-btn');
+    if (resetBtn) {
+        const z = (missionZones.zones || []).find(z => z.zone_id === resetBtn.dataset.zoneId);
+        if (z && z.status === 'in_progress') {
+            z.status = 'planned';
+            saveMissionZones();
+            renderZonesList();
+            if (mapRenderer) mapRenderer.scheduleDraw();
+        }
+        return;
+    }
+
+    const deleteBtn = e.target.closest('.zone-delete-btn');
+    if (deleteBtn) { showDeleteZoneModal(deleteBtn.dataset.zoneId); return; }
+});
 
 function addZone() {
     if (activeMissionZoneId) return;

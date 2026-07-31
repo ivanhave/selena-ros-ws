@@ -4,7 +4,7 @@
          A zombie node keeps JTC alive with stale desired positions: after homing
          resets encoders to 0, JTC immediately drives the gantry back to wherever
          it was commanded last session. -->
-    <executable cmd="bash -c 'pkill -9 -f ros2_control_node; true'" shell="true" />
+    <executable cmd="bash -c 'pkill -9 -f ros2_control_node; fuser -k 9090/tcp 2>/dev/null; true'" shell="true" />
 
     <let name="urdf_path"
         value="$(find-pkg-share robot_description)/urdf/selena_robot.urdf.xacro" />
@@ -53,6 +53,14 @@
         exec="spawner"
         args="joint_trajectory_controller --controller-manager-timeout 120" />
 
+    <!-- Single control point for all gantry motion — starts after JTC is active -->
+    <node pkg="robot_gantry"
+        exec="gantry_node"
+        name="gantry_node"
+        output="screen">
+        <param name="robot_description" value="$(var robot_description)" />
+    </node>
+
     <node pkg="robot_missions"
         exec="mission_server"
         name="mission_server"
@@ -60,5 +68,5 @@
         <param from="$(find-pkg-share robot_missions)/config/tray_positions.yaml" />
     </node>
 
-    <include file="$(find-pkg-share robot_web_app)/launch/teleop.launch.xml" />
+    <include file="$(find-pkg-share robot_web_app)/launch/web_app.launch.xml" />
 </launch>

@@ -6,6 +6,67 @@
      Backlog and Known Hardware Issues stay current.
 -->
 
+## 2026-06-05 — robot_gantry: single control point for all gantry motion
+
+### What was done
+
+Built `robot_gantry` package and refactored all callers to use it exclusively. Nothing publishes to JTC or `gantry_velocity_controller` directly anymore.
+
+**New package — `robot_gantry`:**
+- `action/GantryMove.action` — goal: (x, y, z); result: success/message/final positions; feedback: phase + current positions
+- `srv/GantrySetMode.srv` — toggle velocity/position mode with optional urgent flag
+- `include/robot_gantry/gantry_constants.hpp` — single source of truth for X/Y/Z velocity caps, ACC byte, decel zone, timing constants; exported as CMake INTERFACE library `gantry_constants`
+- `gantry_node` — action server `/gantry/move`, service server `/gantry/set_mode`, subscriber `/gantry/cmd_vel` (velocity mode forwarding), all mode switching, URDF-queried joint limits
+- State machine: POSITION_IDLE → POSITION_MOVING → POSITION_IDLE ↔ VELOCITY
+- Execute sequence: bounds check (URDF) → Z retract if needed → XY move if |delta|>TOL → Z lower if |delta|>TOL; each step uses JTC FollowJointTrajectory action for native completion confirmation; stop_requested_ checked between steps
+
+**`mks_servo_hardware` refactored:**
+- Removed local `constexpr` duplicates (X_VEL_CAP_MS, Y_VEL_CAP_MS, Z_VEL_CAP_MS, VEL_ACC, DECEL_ZONE_M, GUARD_ZONE_M); now aliases to `gantry_constants::` namespace
+- Added `<build_depend>robot_gantry</build_depend>` + `target_link_libraries(... robot_gantry::gantry_constants)`
+
+**`robot_missions/execution_engine` refactored:**
+- Removed JTC publisher, `joint_state_sub_`, `state_mutex_`, local velocity cap constexpr, `send_xy_command`, `send_z_command`, `wait_xy_settled`, `interruptible_sleep`, `xy_move_ms`, `z_move_ms`
+- Added `gantry_client_` (rclcpp_action::Client<GantryMove>)
+- New `send_gantry_move(x, y, z)`: async_send_goal → poll async_get_result with STEP_MS interval, cancel goal on stop_requested_
+- `move_gantry_to(gx, gy)` → `send_gantry_move(gx, gy, HOME_Z)` — robot_gantry handles Z retract internally
+- `lower_z(depth)` → `send_gantry_move(current_gx_, current_gy_, depth)` — XY skipped by robot_gantry (no delta)
+- `move_gantry_to_tray()` → single `send_gantry_move(tray.gx, tray.gy, tray.z_pick)` — robot_gantry does Z retract + XY + Z lower atomically
+
+**`robot_web_app/app.js` refactored:**
+- Removed: `jointTrajTopic`, `switchControllerService`, `sendGantryPosition()`, `X_HW_CAP/Y_HW_CAP/Z_HW_CAP`
+- Added: `gantrySetModeService` (`/gantry/set_mode`), `gantryMoveClient` (ROSLIB.ActionClient on `/gantry/move`)
+- `gantryVelTopic` topic changed from `/gantry_velocity_controller/commands` → `/gantry/cmd_vel`
+- Mode toggle: calls `gantrySetModeService({velocity_mode: enabled, urgent: enabled})`
+- Position text boxes: calls `sendGantryMove(x, y, z)` via action (no timing formula in JS)
+- On-connect guard: calls `gantrySetModeService({velocity_mode: false, urgent: false})`
+
+**`robot_bringup/launch/robot.launch.xml`:**
+- Added `gantry_node` launch after JTC spawner
+
+**Build:** all 12 packages clean, zero errors or warnings.
+
+### Hardware test results (2026-06-05) — PASSED
+
+**T1 ✅ gantry_node startup** — reads URDF limits correctly: `X [-0.005, 0.845]  Y [-0.005, 0.290]  Z [-0.005, 0.250]`
+
+**T2 ✅ Position mode** — `/gantry/move` action: `(0.1, 0.05, 0.0)` SUCCEEDED, final position within 0.1mm. Two-phase test: Z lower to 0.08m then new XY goal confirms Z retract→XY→Z-lower sequencing correct.
+
+**T3 ✅ Velocity mode** — `/gantry/set_mode {velocity_mode: true}` SUCCEEDED; `/gantry/cmd_vel` published; verified gantry_node forwards immediately to `/gantry_velocity_controller/commands` (monitored with topic echo).
+
+**T4 ✅ Mode switch** — POSITION→VELOCITY→POSITION both directions: hardware interface logs `switched to VELOCITY mode` / `switched to POSITION mode`; gantry_node logs `Mode switched to VELOCITY` / `Mode switched to POSITION`.
+
+**T5 ✅ Mission end-to-end** — 4/4 naut seeds planted; all 20 gantry moves went through `/gantry/move` action exclusively; zero direct JTC traffic from execution_engine; JTC still logs `Goal reached, success!` for each move (gantry_node drives JTC internally).
+
+**Web app** — Updated app.js: no rosbridge import errors (removed ROSLIB.ActionClient), `/gantry/cmd_vel` subscription active, service type `robot_gantry/srv/GantrySetMode` accepted by rosbridge.
+
+**Fix applied during test** — `robot_description` parameter was not passed to `gantry_node` in launch file; added `<param name="robot_description" value="$(var robot_description)" />`.
+
+### Seed pickup attempt (code removed, same session start)
+
+Attempted first end-to-end autonomous seed pickup (floor-mounted laptop camera → calibration → pickup action). Code removed because `execution_engine`, `pickup_server_node`, `calibration_node`, and web app all had their own JTC timing formula — robot_gantry had to be implemented first. Gripper pushed into the box during calibration (no visual confirmation of seed hold).
+
+---
+
 ## 2026-06-04 — Navigation accuracy fix + stop-after-refresh fix + status bar redesign
 
 ### Problems fixed
@@ -187,6 +248,8 @@ Homing, hardware interface, and teleop brought up from scratch:
 
 ## Backlog
 
+- [x] ~~**robot_gantry**~~ — DONE 2026-06-05: single control point for all gantry motion; 4/4 seeds via action, velocity forwarding, mode switch all hardware-verified
+- [ ] **Seed pickup** — re-implement after robot_gantry is in place; needs visual pickup confirmation (compare gripper finger region before/after close)
 - [ ] Measure tray coordinates physically → update `config/tray_positions.yaml`
 - [ ] **Multi-strip navigation verification** — headland routing untested; same-strip confirmed with 2 missions
 - [ ] **Nav2Navigator** — implement once Nav2 is set up (one-line swap from `OdometryNavigator`)

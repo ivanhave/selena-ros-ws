@@ -3,6 +3,7 @@
 #include "nav_msgs/msg/path.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "robot_navigation/field_path_planner.hpp"
+#include "robot_gantry/gantry_constants.hpp"
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <yaml-cpp/yaml.h>
 #include <regex>
@@ -21,6 +22,7 @@ MissionManager::MissionManager(
     rclcpp::QoS path_qos(1);
     path_qos.transient_local();
     planned_path_pub_ = node_->create_publisher<nav_msgs::msg::Path>("/mission_planned_path", path_qos);
+    gantry_client_    = rclcpp_action::create_client<GantryMove>(node_, "/gantry/move");
 
     load_field_config();
     load_headland_clearance();
@@ -87,6 +89,7 @@ MissionResult MissionManager::run(const MissionCommand & cmd)
     publish_planned_path(full_path);
 
     // ── Step 3: navigate to zone start ───────────────────────────────────────
+    retract_gantry_for_travel();   // Z must be home before base moves
     RCLCPP_INFO(node_->get_logger(),
         "Navigating to start (%.2f, %.2f, yaw=%.2f rad).", cmd.start_x, cmd.start_y, cmd.start_yaw);
     for (const auto & wp : nav_wps) {
@@ -141,6 +144,34 @@ std::string MissionManager::get_current_step()
 robot_navigation::Pose2D MissionManager::get_robot_pose()
 {
     return nav_->get_pose();
+}
+
+void MissionManager::retract_gantry_for_travel()
+{
+    if (!gantry_client_->wait_for_action_server(std::chrono::seconds(2))) {
+        RCLCPP_WARN(node_->get_logger(),
+            "Gantry action server not available — skipping Z retract before navigation.");
+        return;
+    }
+
+    GantryMove::Goal goal;
+    goal.x = 0.0;
+    goal.y = 0.0;
+    goal.z = gantry_constants::HOME_Z;
+
+    auto gh_future = gantry_client_->async_send_goal(goal);
+    if (gh_future.wait_for(std::chrono::seconds(5)) != std::future_status::ready) {
+        RCLCPP_WARN(node_->get_logger(), "Gantry retract: goal not accepted — proceeding.");
+        return;
+    }
+    auto gh = gh_future.get();
+    if (!gh) {
+        RCLCPP_WARN(node_->get_logger(), "Gantry retract: goal rejected — proceeding.");
+        return;
+    }
+
+    gantry_client_->async_get_result(gh).wait();
+    RCLCPP_INFO(node_->get_logger(), "Gantry retracted to home before navigation.");
 }
 
 void MissionManager::load_field_config()

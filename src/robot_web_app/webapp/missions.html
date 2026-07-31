@@ -91,8 +91,10 @@
                 <div class="mission-card-title">Planting</div>
 
                 <!-- Zone planner tool -->
-                <span class="field-label">Create Planting Zones</span>
-                <div id="zp-instruction" class="zp-instruction">Click a strip on the map to place start</div>
+                <div class="zp-header">
+                    <span class="field-label">Create Planting Zones</span>
+                    <div id="zp-instruction" class="zp-instruction">Click a strip on the map to place start</div>
+                </div>
 
                 <div id="zp-coords" class="hidden">
                     <div class="zp-row">
@@ -125,8 +127,8 @@
                 <div id="zp-overlap-error" class="form-error hidden">Overlaps an existing zone on this strip.</div>
 
                 <div class="fc-actions">
-                    <button class="btn-secondary" id="btn-zp-clear">Clear</button>
                     <button class="btn-primary" id="btn-zp-add" disabled>Add Zone</button>
+                    <button class="btn-secondary" id="btn-zp-clear" disabled>Clear</button>
                 </div>
 
                 <!-- Zones list -->

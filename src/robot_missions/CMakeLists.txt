@@ -16,6 +16,7 @@ find_package(sensor_msgs REQUIRED)
 find_package(trajectory_msgs REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(robot_navigation REQUIRED)
+find_package(robot_gantry REQUIRED)
 find_package(yaml_cpp_vendor REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(robot_description REQUIRED)
@@ -53,13 +54,14 @@ ament_target_dependencies(${PROJECT_NAME}_lib
   sensor_msgs
   trajectory_msgs
   robot_navigation
+  robot_gantry
   yaml_cpp_vendor
   robot_description
 )
 
-# Link generated action typesupport and yaml-cpp into the library
+# Link generated action typesupport, yaml-cpp, and gantry constants header
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} rosidl_typesupport_cpp)
-target_link_libraries(${PROJECT_NAME}_lib ${cpp_typesupport_target} yaml-cpp::yaml-cpp)
+target_link_libraries(${PROJECT_NAME}_lib ${cpp_typesupport_target} yaml-cpp::yaml-cpp robot_gantry::gantry_constants)
 
 # ── Executable — mission action server ────────────────────────────────────────
 add_executable(mission_server src/mission_server_node.cpp)
